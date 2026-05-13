@@ -1,8 +1,23 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import type { DailyMetricRow, EcosystemEvent } from '../types';
-import { addDays } from '../utils/dateUtil';
+import type { EcosystemEvent, MonthlyByDeviceRow } from '../types';
+import { toMonthKey } from '../utils/dateUtil';
 
 const NE_TUTOR = 'NE Tutor';
+
+/** YYYY-MM 에 달력 delta 개월을 더함 */
+function addCalendarMonths(ym: string, delta: number): string {
+  let y = Number(ym.slice(0, 4));
+  let m = Number(ym.slice(5, 7)) - 1 + delta;
+  while (m < 0) {
+    m += 12;
+    y -= 1;
+  }
+  while (m >= 12) {
+    m -= 12;
+    y += 1;
+  }
+  return `${y}-${String(m + 1).padStart(2, '0')}`;
+}
 
 function fmtPct(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return '-';
@@ -63,65 +78,108 @@ interface DeviceWindowResult {
   mauPct: number | null;
 }
 
+function newForDevices(r: MonthlyByDeviceRow, includePC: boolean, includeMobile: boolean): number {
+  let v = 0;
+  if (includePC) v += r.pcNew;
+  if (includeMobile) v += r.moNew;
+  return v;
+}
+
+function mauForDevices(r: MonthlyByDeviceRow, includePC: boolean, includeMobile: boolean): number {
+  let v = 0;
+  if (includePC) v += r.pcMau;
+  if (includeMobile) v += r.moMau;
+  return v;
+}
+
 /**
- * NE Tutor 일별 데이터에서 (이벤트 anchor 기준) 전/후 window 일 비교 증감율 계산.
- * - 디바이스 필터: PC/Mobile 둘 다 false면 비교 결과는 모두 null
- * - 신규사용자: 전·후 기간의 합계 비교
- * - MAU: 전·후 기간의 일별 activeUsers 최댓값 비교
+ * 월간 통합(NE Tutor)에서 anchor가 속한 월(M) 기준,
+ * - 이전 beforeSpan개의 달(직전 달부터) vs
+ * - 이후 afterSpan개의 달(M부터)
+ * 신규는 월별 합, MAU는 해당 월들의 산술평균으로 비교.
  */
-function compareWindow(
-  daily: DailyMetricRow[],
-  anchor: string,
-  windowDays: number,
+function aggregateNeTutorWindow(
+  monthKeys: string[],
+  byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
+  includePC: boolean,
+  includeMobile: boolean,
+): { newSum: number; mauAvg: number | null } {
+  if (!includePC && !includeMobile) return { newSum: 0, mauAvg: null };
+  let newSum = 0;
+  const mauSamples: number[] = [];
+  for (const mo of monthKeys) {
+    const r = byMonth.get(mo)?.get(NE_TUTOR);
+    if (!r) continue;
+    newSum += newForDevices(r, includePC, includeMobile);
+    const mau = mauForDevices(r, includePC, includeMobile);
+    mauSamples.push(mau);
+  }
+  const mauAvg =
+    mauSamples.length > 0 ? mauSamples.reduce((a, b) => a + b, 0) / mauSamples.length : null;
+  return { newSum, mauAvg };
+}
+
+function compareMonthWindows(
+  byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
+  anchorDate: string,
+  beforeSpan: number,
+  afterSpan: number,
   includePC: boolean,
   includeMobile: boolean,
 ): DeviceWindowResult {
   if (!includePC && !includeMobile) return { newPct: null, mauPct: null };
 
-  const beforeStart = addDays(anchor, -windowDays);
-  const beforeEnd = addDays(anchor, -1);
-  const afterStart = anchor;
-  const afterEnd = addDays(anchor, windowDays - 1);
-
-  let newB = 0;
-  let newA = 0;
-  let mauB = 0;
-  let mauA = 0;
-
-  for (const r of daily) {
-    if (r.service !== NE_TUTOR) continue;
-    if (r.device === 'PC' && !includePC) continue;
-    if (r.device === 'M' && !includeMobile) continue;
-    if (r.date >= beforeStart && r.date <= beforeEnd) {
-      newB += r.newUsers;
-      mauB = Math.max(mauB, r.activeUsers);
-    } else if (r.date >= afterStart && r.date <= afterEnd) {
-      newA += r.newUsers;
-      mauA = Math.max(mauA, r.activeUsers);
-    }
+  const M = toMonthKey(anchorDate);
+  const beforeMonths: string[] = [];
+  for (let k = beforeSpan; k >= 1; k--) {
+    beforeMonths.push(addCalendarMonths(M, -k));
+  }
+  const afterMonths: string[] = [];
+  for (let k = 0; k < afterSpan; k++) {
+    afterMonths.push(addCalendarMonths(M, k));
   }
 
-  return { newPct: pct(newA, newB), mauPct: pct(mauA, mauB) };
+  const before = aggregateNeTutorWindow(beforeMonths, byMonth, includePC, includeMobile);
+  const after = aggregateNeTutorWindow(afterMonths, byMonth, includePC, includeMobile);
+
+  const newPct = pct(after.newSum, before.newSum);
+  const mauB = before.mauAvg;
+  const mauA = after.mauAvg;
+  const mauPct = mauA != null && mauB != null ? pct(mauA, mauB) : null;
+
+  return { newPct, mauPct };
 }
 
 /**
  * 주요 서비스 변화 추이
- * - 이벤트 발생일 기준 NE Tutor 일별 데이터를 이용해 30일/3개월 윈도우 증감율 표기
- * - PC/Mobile 체크박스: 선택된 디바이스의 데이터만 합산하여 비교
+ * - 이벤트 anchor가 속한 달(M) 기준, 월간 통합 xlsx에서 읽은 NE Tutor 월별 행으로 비교
+ * - 1개월: 직전 1달 vs 이벤트 달(M) / 3개월: 직전 3달 vs M·M+1·M+2
+ * - PC/Mobile: 선택 디바이스만 합산(신규), MAU는 월별 합(선택 디바이스)의 평균
  */
-export function ImpactSummary(props: { daily: DailyMetricRow[]; events: readonly EcosystemEvent[] }) {
+export function ImpactSummary(props: {
+  monthlyByDevice: readonly MonthlyByDeviceRow[];
+  events: readonly EcosystemEvent[];
+}) {
   const [includePC, setIncludePC] = useState(true);
   const [includeMobile, setIncludeMobile] = useState(false);
 
+  const byMonth = useMemo(() => {
+    const map = new Map<string, Map<string, MonthlyByDeviceRow>>();
+    for (const r of props.monthlyByDevice) {
+      if (!map.has(r.month)) map.set(r.month, new Map());
+      map.get(r.month)!.set(r.service, r);
+    }
+    return map;
+  }, [props.monthlyByDevice]);
+
   const rows = useMemo(() => {
     return props.events.map((ev) => {
-      const w30 = compareWindow(props.daily, ev.anchorDate, 30, includePC, includeMobile);
-      const w90 = compareWindow(props.daily, ev.anchorDate, 90, includePC, includeMobile);
-      return { ev, w30, w90 };
+      const w1 = compareMonthWindows(byMonth, ev.anchorDate, 1, 1, includePC, includeMobile);
+      const w3 = compareMonthWindows(byMonth, ev.anchorDate, 3, 3, includePC, includeMobile);
+      return { ev, w1, w3 };
     });
-  }, [props.daily, props.events, includePC, includeMobile]);
+  }, [byMonth, props.events, includePC, includeMobile]);
 
-  // 두 체크박스 모두 꺼지지 않도록 강제
   const togglePC = (v: boolean) => {
     if (!v && !includeMobile) return;
     setIncludePC(v);
@@ -173,14 +231,14 @@ export function ImpactSummary(props: { daily: DailyMetricRow[]; events: readonly
               <th colSpan={2} className="impact-grouphead">MAU 증감율</th>
             </tr>
             <tr>
-              <th className="impact-subhead">30일전</th>
-              <th className="impact-subhead">3개월전</th>
-              <th className="impact-subhead">30일전</th>
-              <th className="impact-subhead">3개월전</th>
+              <th className="impact-subhead">1개월</th>
+              <th className="impact-subhead">3개월</th>
+              <th className="impact-subhead">1개월</th>
+              <th className="impact-subhead">3개월</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ ev, w30, w90 }) => {
+            {rows.map(({ ev, w1, w3 }) => {
               const badge = eventTypeBadge(ev.type);
               return (
                 <tr key={ev.id}>
@@ -192,16 +250,16 @@ export function ImpactSummary(props: { daily: DailyMetricRow[]; events: readonly
                     <div className="impact-event-date">{ev.anchorDate}</div>
                   </td>
                   <td className="impact-pct-cell">
-                    <PctCell value={w30.newPct} />
+                    <PctCell value={w1.newPct} />
                   </td>
                   <td className="impact-pct-cell">
-                    <PctCell value={w90.newPct} />
+                    <PctCell value={w3.newPct} />
                   </td>
                   <td className="impact-pct-cell">
-                    <PctCell value={w30.mauPct} />
+                    <PctCell value={w1.mauPct} />
                   </td>
                   <td className="impact-pct-cell">
-                    <PctCell value={w90.mauPct} />
+                    <PctCell value={w3.mauPct} />
                   </td>
                 </tr>
               );
@@ -209,6 +267,10 @@ export function ImpactSummary(props: { daily: DailyMetricRow[]; events: readonly
           </tbody>
         </table>
       </div>
+      <p className="impact-summary-footnote">
+        NE Tutor는 <strong>월간 통합 데이터</strong>(xlsx) 기준입니다. 1개월: 이벤트 달(M) 대비 직전 1달 · 3개월: M~M+2
+        대비 직전 3달(신규=월 합, MAU=월 평균).
+      </p>
     </div>
   );
 }

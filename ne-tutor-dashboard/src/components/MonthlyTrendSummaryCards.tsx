@@ -111,8 +111,8 @@ export function MonthlyTrendSummaryCards(props: {
         선택 기간 {stats.monthCount}개월 · {stats.hint}
         {stats.dataMonths === 0 ? ' · NE Tutor 데이터 없음' : ''}
       </p>
-      <div className="monthly-trend-summary-grid">
-        <div className="monthly-trend-card monthly-trend-card--wide">
+      <div className="monthly-trend-summary-grid monthly-trend-summary-grid--cols7">
+        <div className="monthly-trend-card">
           <div className="monthly-trend-card-kicker">NE Tutor</div>
           <div className="monthly-trend-card-title">기간 평균 MAU</div>
           <div className="monthly-trend-card-value">
@@ -120,7 +120,7 @@ export function MonthlyTrendSummaryCards(props: {
           </div>
           <div className="monthly-trend-card-note">월별 MAU의 산술평균</div>
         </div>
-        <div className="monthly-trend-card monthly-trend-card--wide">
+        <div className="monthly-trend-card">
           <div className="monthly-trend-card-kicker">NE Tutor</div>
           <div className="monthly-trend-card-title">기간 평균 신규사용자</div>
           <div className="monthly-trend-card-value">
@@ -128,8 +128,6 @@ export function MonthlyTrendSummaryCards(props: {
           </div>
           <div className="monthly-trend-card-note">월별 신규 사용자 수의 산술평균</div>
         </div>
-      </div>
-      <div className="monthly-trend-summary-grid monthly-trend-summary-grid--shares">
         {stats.shares.map((s) => (
           <div key={s.key} className="monthly-trend-card">
             <div className="monthly-trend-card-kicker">{s.label}</div>

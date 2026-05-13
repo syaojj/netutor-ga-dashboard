@@ -233,17 +233,28 @@ table.data th {
 
 .monthly-trend-summary-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.monthly-trend-summary-grid--shares {
-  margin-top: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+/* 데이터 산술 영역: 데스크톱 한 행 7칸(NE Tutor 2 + 비중 5) */
+.monthly-trend-summary-grid--cols7 {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
-@media (max-width: 640px) {
-  .monthly-trend-summary-grid {
+@media (max-width: 1200px) {
+  .monthly-trend-summary-grid--cols7 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .monthly-trend-summary-grid--cols7 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .monthly-trend-summary-grid--cols7 {
     grid-template-columns: 1fr;
   }
 }
@@ -253,10 +264,6 @@ table.data th {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--card);
-  min-height: 0;
-}
-
-.monthly-trend-card--wide {
   min-height: 108px;
 }
 
@@ -424,6 +431,13 @@ table.data th {
   color: var(--muted);
 }
 
+.impact-summary-footnote {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .grammar-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -508,6 +522,49 @@ table.data th {
   gap: 10px 12px;
   margin-bottom: 10px;
   padding: 4px 2px 0;
+}
+
+.trend-chart-toolbar--yoy {
+  align-items: flex-start;
+}
+
+.yoy-legend-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.yoy-toggle-row {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.yoy-range-note {
+  margin: 0 0 12px;
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.yoy-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 960px) {
+  .yoy-compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.yoy-chart-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 4px 2px;
+  background: rgba(15, 23, 42, 0.35);
+  min-width: 0;
 }
 
 .trend-series-toggles {

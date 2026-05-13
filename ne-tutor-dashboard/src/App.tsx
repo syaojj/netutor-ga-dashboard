@@ -23,27 +23,15 @@ import {
   monthlyByDeviceToMonthly,
 } from './utils/monthlyTrend';
 import { parseOrdersWorkbook } from './utils/parseOrders';
-import {
-  aggregateGrammarOrdersByMonth,
-  buildCategoryComboSummary,
-  buildEventImpactTable,
-  correlationHeatmap,
-  filterAndMergeDevice,
-  getDataDateBounds,
-  grammarTerminationBeforeAfter,
-  TREND_SERVICES,
-} from './utils/metrics';
+import { getDataDateBounds, TREND_SERVICES } from './utils/metrics';
 import { clampRange, addDays } from './utils/dateUtil';
 import { Layout } from './components/Layout';
 import { Sidebar } from './components/Sidebar';
 import { FiltersBar } from './components/FiltersBar';
 import { TrendChart } from './components/TrendChart';
-import { TrendChartSplitDevice } from './components/TrendChartSplitDevice';
+import { YoYCompareChartsGrid } from './components/YoYCompareChartsGrid';
 import { MonthlyTrendControls, type MonthlyPresetKey } from './components/MonthlyTrendControls';
 import { MonthlyTrendSummaryCards } from './components/MonthlyTrendSummaryCards';
-import { EventImpactTable } from './components/EventImpactTable';
-import { GrammarSection } from './components/GrammarSection';
-import { CorrelationPanel } from './components/CorrelationPanel';
 import { ImpactSummary } from './components/ImpactSummary';
 import { RawDataPanel } from './components/RawDataPanel';
 
@@ -83,7 +71,6 @@ export default function App() {
   const [toYear, setToYear] = useState<string>('2026');
   const [toMonth, setToMonth] = useState<string>('04');
   const [logScale, setLogScale] = useState(true);
-  const [showAllImpactRows, setShowAllImpactRows] = useState(false);
   const [mainView, setMainView] = useState<'dashboard' | 'raw'>('dashboard');
   const [activeRawFile, setActiveRawFile] = useState<string>(RAW_MENU_ITEMS[0].displayName);
   /** 전년 동기 비교(월 축) 구간 — 월별 섹션과 독립 */
@@ -269,39 +256,10 @@ export default function App() {
   const { start: rs, end: re } = clampRange(rangeStart, rangeEnd, bounds.min, bounds.max);
   const { start: yoyRs, end: yoyRe } = clampRange(yoyRangeStart, yoyRangeEnd, bounds.min, bounds.max);
 
-  const dailyMerged = useMemo(() => filterAndMergeDevice(dailyRaw, device), [dailyRaw, device]);
-
   // 월간 트렌드 데이터는 새 월간 xlsx를 1순위 소스로 사용
   const monthly = useMemo(
     () => monthlyByDeviceToMonthly(monthlyByDevice, device),
     [monthlyByDevice, device],
-  );
-
-  const impactRows = useMemo(() => buildEventImpactTable(dailyMerged, 30), [dailyMerged]);
-  const impactDisplay = useMemo(
-    () =>
-      showAllImpactRows
-        ? impactRows
-        : impactRows.filter((r) =>
-            ['NE Tutor', '문법문제뱅크', '문법예문검색', 'NELT'].includes(r.impactedService),
-          ),
-    [impactRows, showAllImpactRows],
-  );
-  const grammarBars = useMemo(() => grammarTerminationBeforeAfter(dailyMerged), [dailyMerged]);
-  const orderMonthly = useMemo(() => aggregateGrammarOrdersByMonth(orders), [orders]);
-  const categoryComboSummary = useMemo(() => buildCategoryComboSummary(orders), [orders]);
-  const heatServices = useMemo(
-    () => ['NE Tutor', '문법문제', '문법예문', 'NELT', '교재자료', '클래스카드', '어휘출제'],
-    [],
-  );
-  const monthlyInRange = useMemo(() => {
-    const startM = rs.slice(0, 7);
-    const endM = re.slice(0, 7);
-    return monthly.filter((r) => r.month >= startM && r.month <= endM);
-  }, [monthly, rs, re]);
-  const heat = useMemo(
-    () => correlationHeatmap(monthlyInRange, heatServices),
-    [monthlyInRange, heatServices],
   );
 
   const applyPreset = useCallback(
@@ -530,7 +488,7 @@ export default function App() {
             events={ECOSYSTEM_EVENTS}
             services={[...TREND_SERVICES]}
           />
-          <ImpactSummary daily={dailyRaw} events={ECOSYSTEM_EVENTS} />
+          <ImpactSummary monthlyByDevice={monthlyByDevice} events={ECOSYSTEM_EVENTS} />
         </div>
       </section>
 
@@ -557,44 +515,12 @@ export default function App() {
           logScale={yoyLogScale}
           onLogScale={setYoyLogScale}
         />
-        <TrendChartSplitDevice
+        <YoYCompareChartsGrid
           monthlyByDevice={monthlyByDevice}
           rangeStart={yoyRs}
           rangeEnd={yoyRe}
           logScale={yoyLogScale}
         />
-      </section>
-
-      <section id="impact" className="section">
-        <h2 className="section-title">이벤트 영향 분석 (전후 30일)</h2>
-        <label className="inline-check">
-          <input
-            type="checkbox"
-            checked={showAllImpactRows}
-            onChange={(e) => setShowAllImpactRows(e.target.checked)}
-          />
-          전체 서비스 행 표시
-        </label>
-        <EventImpactTable rows={impactDisplay} />
-      </section>
-
-      <section id="grammar" className="section">
-        <h2 className="section-title">문법문제뱅크 단기 상품 주문 분석</h2>
-        <GrammarSection
-          beforeAfter={grammarBars}
-          orderMonthly={orderMonthly}
-          categoryComboSummary={categoryComboSummary}
-          hasOrders={orders.length > 0}
-        />
-      </section>
-
-      <section id="synergy" className="section">
-        <h2 className="section-title">서비스 사용 추세 상관관계</h2>
-        <p className="section-desc">
-          월별 이용(MAU) 그래프가 서로 비슷하게 움직였는지 색으로 보여 줍니다. 같은 사람인지는 알 수 없고, 학기·방학
-          같은 <strong>계절</strong>이나 캠페인 영향도 함께 생각해 주세요.
-        </p>
-        <CorrelationPanel labels={heatServices} z={heat.z} months={heat.months} />
       </section>
 
         </>

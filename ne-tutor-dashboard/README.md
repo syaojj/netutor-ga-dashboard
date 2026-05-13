@@ -25,6 +25,9 @@ npm run dev
 
 ### GitHub Pages
 
+0. **저장소 페이지(github.com/…/tree)가 아니라 사이트 URL로 열기**  
+   `https://github.com/<user>/<repo>`는 HTML 사이트가 아니라 404·목록만 보일 수 있습니다. 실제 대시보드는 **`https://<user>.github.io/<repo>/`** (Settings → Pages에 표시된 Visit site 링크)로 접속하세요.
+
 1. **저장소 종류에 맞는 `base`**
    - **프로젝트 사이트** (`https://아이디.github.io/저장소이름/`): 빌드 시 `VITE_BASE=/저장소이름/` 이어야 합니다. 워크플로가 일반 저장소에 대해 자동 설정합니다.
    - **사용자/조직 사이트** (저장소 이름이 `아이디.github.io`인 경우, URL이 `https://아이디.github.io/` 루트): **`base`는 반드시 `/`** 여야 합니다. 이전에는 저장소 이름으로 `base`를 잡아 JS·CSS가 전부 404가 나는 경우가 있었습니다. 현재 워크플로는 `*.github.io` 저장소면 자동으로 `/`를 씁니다.
@@ -32,6 +35,8 @@ npm run dev
 2. **Settings → Pages**에서 배포 소스가 **GitHub Actions**인지 확인합니다.
 
 3. 브라우저 **개발자 도구 → Network**에서 `assets/*.js`가 404인지 확인합니다. 404면 `npm run build`에 쓴 `VITE_BASE`가 실제 사이트 URL 경로와 다른 것입니다.
+
+4. **Deployments**에 `pages-build-deployment`와 `Deploy GitHub Pages`가 둘 다 있을 때, **Active**가 기본 `pages-build-deployment`이면 저장소 루트 기준 배포가 올라가 `index.html`이 없어 **사이트 전체 404**가 날 수 있습니다. **Actions → Deploy GitHub Pages**에서 최신 성공 실행을 **Re-run all jobs**해 커스텀 배포가 마지막이 되게 하거나, **Actions** 왼쪽에서 **Pages build and deployment** 워크플로를 **Disable workflow**할 수 있으면 비활성화하세요.
 
 ### 로컬 (`npm run dev`)
 

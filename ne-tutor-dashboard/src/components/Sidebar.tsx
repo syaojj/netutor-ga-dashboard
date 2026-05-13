@@ -64,13 +64,6 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(59,130,246,0.15)',
     color: '#93c5fd',
   },
-  foot: {
-    marginTop: 'auto',
-    padding: '12px 8px',
-    fontSize: '0.75rem',
-    color: 'var(--muted)',
-    lineHeight: 1.5,
-  },
 };
 
 export function Sidebar(props: {
@@ -127,10 +120,6 @@ export function Sidebar(props: {
         </div>
       )}
 
-      <div style={styles.foot}>
-        대시보드와 Raw Data는 동일한 월간 통합 데이터 소스를 사용합니다. 좌측 메뉴에서 서비스를 선택하면 해당
-        서비스의 월별 원시 데이터(MAU·신규사용자)를 표로 확인할 수 있습니다.
-      </div>
     </aside>
   );
 }

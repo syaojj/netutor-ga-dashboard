@@ -58,7 +58,6 @@ export default function App() {
   const [monthlyByDevice, setMonthlyByDevice] = useState<MonthlyByDeviceRow[]>([]);
   const [ebookMonthly, setEbookMonthly] = useState<EbookMonthlyRow[]>([]);
   const [orders, setOrders] = useState<OrderRecord[]>([]);
-  const [warnings, setWarnings] = useState<string[]>([]);
   const [usedSample, setUsedSample] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showPC, setShowPC] = useState(true);
@@ -99,7 +98,6 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const w: string[] = [];
       try {
         const htmlParts = await Promise.all(
           GA_HTML_SOURCES.map(async (name) => {
@@ -108,14 +106,12 @@ export default function App() {
               const html = await fetchText(url);
               return { name, html };
             } catch {
-              w.push(`HTML 로드 실패: ${name}`);
               return null;
             }
           }),
         );
         const valid = htmlParts.filter(Boolean) as { name: string; html: string }[];
         const parsedHtml = parseHtmlSheets(valid);
-        w.push(...parsedHtml.warnings);
 
         let fromWorkbook: DailyMetricRow[] = [];
         let parsedEbookMonthly: EbookMonthlyRow[] = [];
@@ -124,12 +120,8 @@ export default function App() {
           const pw = parseGaWorkbook(gaBuf);
           fromWorkbook = pw.daily;
           parsedEbookMonthly = pw.ebookMonthly;
-          w.push(...pw.warnings);
-          if (fromWorkbook.length) {
-            w.push(`GA 일별 통합 통계 사용: ${GA_DAILY_WORKBOOK_XLSX_NAME} (${fromWorkbook.length}행)`);
-          }
         } catch {
-          w.push(`GA 일별 통합 xlsx 없음 또는 로드 실패 — ${GA_DAILY_WORKBOOK_XLSX_NAME} (HTML만 사용)`);
+          /* 일별 xlsx 없으면 HTML만 사용 */
         }
 
         let parsedMonthlyByDevice: MonthlyByDeviceRow[] = [];
@@ -140,14 +132,8 @@ export default function App() {
           const pm = parseGaMonthlyWorkbook(monthlyBuf);
           parsedMonthlyByDevice = pm.monthlyByDevice;
           if (pm.ebookMonthly.length > 0) parsedEbookMonthly = pm.ebookMonthly;
-          w.push(...pm.warnings);
-          if (parsedMonthlyByDevice.length) {
-            w.push(
-              `월간 통합 통계 사용: ${GA_MONTHLY_WORKBOOK_XLSX_NAME} (${parsedMonthlyByDevice.length}행)`,
-            );
-          }
         } catch {
-          w.push(`월간 통합 xlsx 없음 또는 로드 실패 — ${GA_MONTHLY_WORKBOOK_XLSX_NAME}`);
+          /* 월간 xlsx 없음 */
         }
 
         const mergedDaily =
@@ -160,9 +146,8 @@ export default function App() {
           const buf = await fetchBuf(`${base}data/${encodeURIComponent(ORDERS_XLSX_NAME)}`);
           const po = parseOrdersWorkbook(buf);
           orderList = po.orders;
-          w.push(...po.warnings);
         } catch {
-          w.push('주문 엑셀 로드 실패 — 주문 기반 위젯은 샘플/빈 데이터');
+          /* 주문 엑셀 없음 */
         }
 
         if (cancelled) return;
@@ -170,7 +155,6 @@ export default function App() {
         if (!mergedDaily.length) {
           setDailyRaw(buildSampleDaily());
           setUsedSample(true);
-          w.push('GA 데이터 없음(통합 xlsx·HTML 모두) — 샘플 데이터로 대체');
         } else {
           setDailyRaw(mergedDaily);
           setUsedSample(false);
@@ -178,7 +162,6 @@ export default function App() {
         setMonthlyByDevice(parsedMonthlyByDevice);
         setOrders(orderList);
         setEbookMonthly(parsedEbookMonthly);
-        setWarnings(w);
         setLoadError(null);
       } catch (e) {
         if (!cancelled) {
@@ -524,18 +507,6 @@ export default function App() {
       </section>
 
         </>
-      )}
-
-      {warnings.length > 0 && (
-        <footer className="footer-warn">
-          <strong>데이터 경고</strong>
-          <ul>
-            {warnings.slice(0, 12).map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-            {warnings.length > 12 && <li>… 외 {warnings.length - 12}건</li>}
-          </ul>
-        </footer>
       )}
     </Layout>
   );

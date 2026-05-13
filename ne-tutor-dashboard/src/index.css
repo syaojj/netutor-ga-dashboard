@@ -101,18 +101,6 @@ select {
   margin-bottom: 10px;
 }
 
-.footer-warn {
-  border-top: 1px solid var(--border);
-  padding: 16px 0 32px;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.footer-warn ul {
-  margin: 8px 0 0;
-  padding-left: 18px;
-}
-
 .chart-box {
   background: var(--card);
   border: 1px solid var(--border);

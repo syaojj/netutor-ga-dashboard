@@ -1,0 +1,54 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ne-tutor-dashboard/package-lock.json
+      # 사용자/조직 사이트(*.github.io)는 루트 URL → base는 반드시 /
+      # 그 외 프로젝트 사이트는 /저장소이름/
+      - name: Resolve VITE_BASE for GitHub Pages
+        shell: bash
+        run: |
+          NAME="${{ github.event.repository.name }}"
+          if [[ "$NAME" == *.github.io ]]; then
+            echo "VITE_BASE=/" >> "$GITHUB_ENV"
+            echo "Using root base for user/org Pages site"
+          else
+            echo "VITE_BASE=/$NAME/" >> "$GITHUB_ENV"
+            echo "Using project base /$NAME/"
+          fi
+      - name: Install and build
+        working-directory: ne-tutor-dashboard
+        run: npm ci && npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ne-tutor-dashboard/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

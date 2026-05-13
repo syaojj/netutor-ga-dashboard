@@ -14,15 +14,28 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
   },
   header: {
-    padding: '20px 24px 8px',
+    padding: '14px 24px',
     borderBottom: '1px solid var(--border)',
     background: 'linear-gradient(180deg, #0f172a 0%, var(--bg) 100%)',
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
   },
   title: {
     margin: 0,
     fontSize: '1.35rem',
     fontWeight: 700,
     letterSpacing: '-0.02em',
+    flex: '0 1 auto',
+  },
+  filtersWrap: {
+    flex: '0 1 auto',
+    display: 'flex',
+    alignItems: 'center',
   },
   content: {
     padding: '16px 24px 48px',
@@ -44,8 +57,10 @@ export function Layout(props: {
       <div style={styles.main}>
         {!props.hideTopBar && (
           <header style={styles.header}>
-            <h1 style={styles.title}>NE Tutor GA data Dashboard</h1>
-            {props.filters}
+            <div style={styles.headerRow}>
+              <h1 style={styles.title}>NE Tutor GA data Dashboard</h1>
+              <div style={styles.filtersWrap}>{props.filters}</div>
+            </div>
           </header>
         )}
         <main style={styles.content}>{props.children}</main>

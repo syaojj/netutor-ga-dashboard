@@ -216,11 +216,91 @@ table.data th {
   color: var(--muted);
 }
 
+/* 월별 데이터 현황 — 검색 아래 요약 카드 */
+.monthly-trend-summary {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.monthly-trend-summary-meta {
+  margin: 0 0 12px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.monthly-trend-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.monthly-trend-summary-grid--shares {
+  margin-top: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+@media (max-width: 640px) {
+  .monthly-trend-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.monthly-trend-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  min-height: 0;
+}
+
+.monthly-trend-card--wide {
+  min-height: 108px;
+}
+
+.monthly-trend-card-kicker {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  margin-bottom: 2px;
+}
+
+.monthly-trend-card-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #e5e7eb;
+  line-height: 1.35;
+}
+
+.monthly-trend-card-value {
+  margin-top: 8px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #f9fafb;
+  line-height: 1.2;
+}
+
+.monthly-trend-card-value--accent {
+  color: #93c5fd;
+}
+
+.monthly-trend-card-note {
+  margin-top: 6px;
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .trend-impact-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(360px, 1fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (max-width: 1000px) {
@@ -257,9 +337,85 @@ table.data th {
   padding: 12px;
 }
 
+.impact-summary {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.impact-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+
 .impact-summary-title {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 0.95rem;
+}
+
+.impact-summary-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.impact-summary-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.impact-summary-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.impact-summary-table thead th {
+  background: rgba(15, 23, 42, 0.85);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.impact-grouphead {
+  text-align: center;
+  font-size: 0.78rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.impact-subhead {
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.impact-pct-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.impact-event-name {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: pre-line;
+  color: #e5e7eb;
+}
+
+.impact-event-date {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .impact-summary-note {
@@ -313,6 +469,24 @@ table.data th {
   margin-right: 4px;
 }
 
+.raw-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #e5e7eb;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.raw-checkbox input {
+  accent-color: var(--accent);
+}
+
 .raw-data-section {
   margin-bottom: 24px;
 }
@@ -338,10 +512,48 @@ table.data th {
 
 .trend-series-toggles {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+  flex-direction: column;
+  gap: 6px;
   flex: 1;
   min-width: 0;
+}
+
+.trend-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.trend-toggle-group--primary {
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.trend-toggle-group--others {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.trend-service-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.trend-service-row-label {
+  display: inline-block;
+  min-width: 84px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.trend-trace-toggle--all {
+  font-weight: 600;
+  color: #e5e7eb;
 }
 
 .trend-trace-toggle {
@@ -374,6 +586,85 @@ table.data th {
 .trend-fs-btn {
   flex-shrink: 0;
   align-self: flex-start;
+}
+
+.trend-hover-card {
+  background: rgba(17, 24, 39, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+  color: #e5e7eb;
+  font-size: 0.76rem;
+  min-width: 480px;
+  max-width: 640px;
+}
+
+.trend-hover-title {
+  font-weight: 700;
+  font-size: 0.86rem;
+  margin-bottom: 8px;
+  color: #f9fafb;
+  letter-spacing: 0.01em;
+}
+
+.trend-hover-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+}
+
+.trend-hover-section--primary {
+  margin-bottom: 8px;
+}
+
+.trend-hover-divider {
+  border-top: 1px dashed rgba(148, 163, 184, 0.45);
+  margin: 4px 0 8px;
+}
+
+.trend-hover-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trend-hover-block-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: #f9fafb;
+  font-size: 0.78rem;
+  margin-bottom: 1px;
+}
+
+.trend-hover-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.trend-hover-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.35;
+  padding-left: 16px;
+}
+
+.trend-hover-label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  min-width: 64px;
+  flex-shrink: 0;
+}
+
+.trend-hover-value {
+  color: #f9fafb;
+  font-variant-numeric: tabular-nums;
 }
 
 .app-root {

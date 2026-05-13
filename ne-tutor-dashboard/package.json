@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "inspect-xlsx": "node scripts/inspect-xlsx.mjs"
+    "inspect-xlsx": "node scripts/inspect-xlsx.mjs",
+    "verify-ga": "npx --yes tsx scripts/verify-ga-workbook.ts"
   },
   "dependencies": {
     "plotly.js-dist-min": "^2.35.3",

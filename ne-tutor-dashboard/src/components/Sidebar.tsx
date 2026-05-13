@@ -1,10 +1,5 @@
-import type { CSSProperties } from 'react';
-import { GA_HTML_SOURCES, ORDERS_XLSX_NAME } from '../data/gaSources';
-
-function sheetLabel(filename: string): string {
-  const base = filename.replace(/\.html$/i, '').replace(/\.xlsx$/i, '');
-  return base.replace(/\sM$/i, ' Mobile');
-}
+import { useState, type CSSProperties } from 'react';
+import { RAW_MENU_ITEMS } from '../data/gaSources';
 
 const styles: Record<string, CSSProperties> = {
   aside: {
@@ -32,6 +27,23 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--muted)',
     padding: '10px 8px 4px',
   },
+  navHeadButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    border: 'none',
+    background: 'transparent',
+    color: 'var(--muted)',
+    padding: '10px 8px 4px',
+    cursor: 'pointer',
+    font: 'inherit',
+    fontSize: '0.7rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    textAlign: 'left',
+  },
+  caret: { fontSize: '0.65rem', opacity: 0.8 },
   link: {
     display: 'block',
     padding: '10px 12px',
@@ -43,6 +55,10 @@ const styles: Record<string, CSSProperties> = {
     background: 'transparent',
     textAlign: 'left',
     width: '100%',
+  },
+  linkSub: {
+    padding: '8px 12px 8px 22px',
+    fontSize: '0.82rem',
   },
   linkActive: {
     background: 'rgba(59,130,246,0.15)',
@@ -61,13 +77,13 @@ export function Sidebar(props: {
   mainView: 'dashboard' | 'raw';
   activeRawFile: string | null;
   onDashboard: () => void;
-  onOpenRaw: (filename: string) => void;
+  onOpenRaw: (key: string) => void;
 }) {
+  const [rawOpen, setRawOpen] = useState(false);
   return (
     <aside style={styles.aside}>
       <div style={styles.brand}>NE Tutor GA</div>
 
-      <div style={styles.navHead}>통합 화면</div>
       <button
         type="button"
         style={{
@@ -76,42 +92,44 @@ export function Sidebar(props: {
         }}
         onClick={props.onDashboard}
       >
-        대시보드
+        통합화면 대시보드
       </button>
 
-      <div style={styles.navHead}>GA 시트 · 원시 데이터</div>
-      {GA_HTML_SOURCES.map((name) => (
-        <button
-          type="button"
-          key={name}
-          style={{
-            ...styles.link,
-            fontSize: '0.8rem',
-            ...(props.mainView === 'raw' && props.activeRawFile === name ? styles.linkActive : {}),
-          }}
-          onClick={() => props.onOpenRaw(name)}
-          title={name}
-        >
-          {sheetLabel(name)}
-        </button>
-      ))}
-
-      <div style={styles.navHead}>주문</div>
       <button
         type="button"
-        style={{
-          ...styles.link,
-          ...(props.mainView === 'raw' && props.activeRawFile === ORDERS_XLSX_NAME ? styles.linkActive : {}),
-        }}
-        onClick={() => props.onOpenRaw(ORDERS_XLSX_NAME)}
-        title={ORDERS_XLSX_NAME}
+        style={styles.navHeadButton}
+        onClick={() => setRawOpen((v) => !v)}
+        aria-expanded={rawOpen}
+        aria-controls="raw-data-list"
       >
-        {sheetLabel(ORDERS_XLSX_NAME)}
+        <span>Raw Data</span>
+        <span style={styles.caret}>{rawOpen ? '▾' : '▸'}</span>
       </button>
+      {rawOpen && (
+        <div id="raw-data-list">
+          {RAW_MENU_ITEMS.map((item) => (
+            <button
+              type="button"
+              key={item.displayName}
+              style={{
+                ...styles.link,
+                ...styles.linkSub,
+                ...(props.mainView === 'raw' && props.activeRawFile === item.displayName
+                  ? styles.linkActive
+                  : {}),
+              }}
+              onClick={() => props.onOpenRaw(item.displayName)}
+              title={item.displayName}
+            >
+              ㄴ {item.displayName}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={styles.foot}>
-        왼쪽 메뉴는 섹션 이동이 아니라 파일 단위 원시 표입니다. 대시보드의 월별·년간 트렌드는 각 섹션 안의 검색
-        영역에서 기간을 조정할 수 있습니다. 시트 이름의 M은 Mobile 데이터입니다.
+        대시보드와 Raw Data는 동일한 월간 통합 데이터 소스를 사용합니다. 좌측 메뉴에서 서비스를 선택하면 해당
+        서비스의 월별 원시 데이터(MAU·신규사용자)를 표로 확인할 수 있습니다.
       </div>
     </aside>
   );

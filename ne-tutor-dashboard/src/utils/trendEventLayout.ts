@@ -1,7 +1,11 @@
 import type { EcosystemEvent } from '../types';
 
-/** 카테고리 축 인덱스 기준 이벤트 “점유 폭” — 겹침 감지용 */
-const EVENT_X_HALF = 0.46;
+/**
+ * 카테고리 축 인덱스 기준 이벤트 “점유 폭” — 겹침 감지용.
+ * 2줄로 분할된 한글 말풍선의 시각적 가로 폭이 약 1.5~2 카테고리 정도 차지하므로
+ * 절반 폭을 1.6으로 잡아 인접 이벤트끼리 다른 레인으로 쌓이도록 합니다.
+ */
+const EVENT_X_HALF = 1.6;
 
 /**
  * 월/연 카테고리 축에서 이벤트 말풍선이 서로 덜 겹치도록 레인(세로)과 xshift(가로)를 할당합니다.
@@ -29,16 +33,13 @@ export function assignEventAnnotationLanes(
     let L = 0;
     for (; L < maxL; L++) {
       const prev = laneEnd[L];
-      if (prev === undefined || prev <= lo + 0.015) {
+      if (prev === undefined || prev <= lo + 0.05) {
         laneEnd[L] = hi;
         placed.push({ ev, xi, lane: L });
         break;
       }
     }
   }
-
-  const maxLane = placed.reduce((m, p) => Math.max(m, p.lane), 0);
-  const skewAmp = 12;
 
   const xiCount = new Map<number, number>();
   for (const p of placed) xiCount.set(p.xi, (xiCount.get(p.xi) ?? 0) + 1);
@@ -48,8 +49,35 @@ export function assignEventAnnotationLanes(
     const n = xiCount.get(p.xi) ?? 1;
     const idx = xiIdx.get(p.xi) ?? 0;
     xiIdx.set(p.xi, idx + 1);
-    const sameXiShift = n <= 1 ? 0 : (idx - (n - 1) / 2) * 48;
-    const laneSkew = maxLane > 0 ? (p.lane - maxLane / 2) * skewAmp : 0;
-    return { ev: p.ev, lane: p.lane, xshift: sameXiShift + laneSkew };
+    // 동일 x 인덱스의 이벤트들은 좌우로 분산. 레인이 다르더라도 같은 x이면 좌우로 살짝 비킨다.
+    const sameXiShift = n <= 1 ? 0 : (idx - (n - 1) / 2) * 60;
+    return { ev: p.ev, lane: p.lane, xshift: sameXiShift };
   });
+}
+
+/**
+ * 한글 이벤트명을 2줄로 자동 분할.
+ * - 6자 이하면 한 줄로 둠.
+ * - 가운데에 가장 가까운 공백/구분자(' ', '·', '/', '&')에서 줄바꿈.
+ * - 자연 구분점이 없으면 글자 단위 중간 분할.
+ */
+export function splitEventNameToTwoLines(name: string): string[] {
+  if (name.length <= 6) return [name];
+  const mid = Math.floor(name.length / 2);
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  const breakChars = new Set([' ', '·', '/', '&']);
+  for (let i = 0; i < name.length; i++) {
+    if (!breakChars.has(name[i])) continue;
+    const d = Math.abs(i - mid);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  if (bestIdx < 0) return [name.slice(0, mid), name.slice(mid)];
+  const ch = name[bestIdx];
+  if (ch === ' ') return [name.slice(0, bestIdx), name.slice(bestIdx + 1)];
+  // '/' 와 '&' 는 윗줄 끝에 붙여 의미 단위가 유지되도록 함
+  return [name.slice(0, bestIdx + 1), name.slice(bestIdx + 1)];
 }

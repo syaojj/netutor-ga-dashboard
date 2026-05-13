@@ -18,22 +18,32 @@ const COL = {
   dauMau: 'DAU/MAU',
 } as const;
 
-/** "NE Tutor M.html" → service, device */
+/** "NE Tutor M.html" → service, device. "E-Book.html" 등 M/PC 없는 단일 시트는 PC로 취급 */
 export function parseFilename(filename: string): FileMeta | null {
   const base = filename.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '');
   const m = base.match(/^(.+?)\s+(M|PC)$/i);
-  if (!m) return null;
-  const device = m[2].toUpperCase() === 'PC' ? 'PC' : 'M';
-  return { filename: base + '.html', service: m[1].trim(), device };
+  if (m) {
+    const device = m[2].toUpperCase() === 'PC' ? 'PC' : 'M';
+    return { filename: base + '.html', service: m[1].trim(), device };
+  }
+  if (base.length > 0 && /^[\w가-힣.\-\s]+$/i.test(base)) {
+    return { filename: `${base}.html`, service: base, device: 'PC' };
+  }
+  return null;
 }
 
 function parseNumber(raw: string): number {
-  const n = Number(String(raw).replace(/,/g, '').trim());
+  const s = String(raw).replace(/,/g, '').trim();
+  if (s.endsWith('%')) {
+    const n = Number(s.slice(0, -1));
+    return Number.isFinite(n) ? n / 100 : 0;
+  }
+  const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
 
 /** 동일 날짜·서비스·디바이스 행 병합: 조회수/신규는 합산, 활성은 경로 중복 가능성으로 max */
-function mergeRowsByDate(rows: DailyMetricRow[]): DailyMetricRow[] {
+export function mergeRowsByDate(rows: DailyMetricRow[]): DailyMetricRow[] {
   const map = new Map<string, DailyMetricRow>();
   for (const r of rows) {
     const key = `${r.service}|${r.device}|${r.date}`;

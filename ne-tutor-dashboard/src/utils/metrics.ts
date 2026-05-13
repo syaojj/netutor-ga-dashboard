@@ -8,6 +8,7 @@ const NE_TUTOR = 'NE Tutor';
 export const TREND_SERVICES = [
   NE_TUTOR,
   '문법문제뱅크',
+  '문법예문검색',
   'NELT',
   '어휘출제마법사',
   '클래스카드',
@@ -204,6 +205,8 @@ export function buildExecutiveKpis(
   const newUvTutorPrev = sumInRange(daily, NE_TUTOR, prevStart, prevEnd, (r) => r.newUsers);
   const mauGb = maxActiveInRange(daily, '문법문제뱅크', rangeStart, rangeEnd);
   const mauGbPrev = maxActiveInRange(daily, '문법문제뱅크', prevStart, prevEnd);
+  const mauEx = maxActiveInRange(daily, '문법예문검색', rangeStart, rangeEnd);
+  const mauExPrev = maxActiveInRange(daily, '문법예문검색', prevStart, prevEnd);
   const mauNelt = maxActiveInRange(daily, 'NELT', rangeStart, rangeEnd);
   const mauNeltPrev = maxActiveInRange(daily, 'NELT', prevStart, prevEnd);
   /** NE Tutor 시트 = 사이트 전체 조회수 (개별 서비스 시트와 합산 금지) */
@@ -221,6 +224,7 @@ export function buildExecutiveKpis(
     { label: 'NE Tutor MAU', value: Math.round(mauTutor), unit: '명', momPct: pct(mauTutor, mauTutorPrev) },
     { label: 'NE Tutor 신규 사용자', value: Math.round(newUvTutor), unit: '명', momPct: pct(newUvTutor, newUvTutorPrev) },
     { label: '문법문제뱅크 활성 사용자', value: Math.round(mauGb), unit: '명', momPct: pct(mauGb, mauGbPrev) },
+    { label: '문법예문검색 MAU', value: Math.round(mauEx), unit: '명', momPct: pct(mauEx, mauExPrev) },
     { label: 'NELT MAU', value: Math.round(mauNelt), unit: '명', momPct: pct(mauNelt, mauNeltPrev) },
     { label: '전체 조회수', value: Math.round(views), unit: '건', momPct: pct(views, viewsPrev) },
     {
@@ -238,13 +242,20 @@ export interface EventImpactRow {
   eventDate: string;
   eventType: string;
   eventName: string;
+  /** 영향 분석 대상 서비스 (ex. NE Tutor) */
   impactedService: string;
   newUvBefore: number;
   newUvAfter: number;
+  /** 30일 윈도우(이벤트 전/후) 신규 사용자 증감율 */
   newUvChangePct: number | null;
+  /** 90일(3개월) 윈도우(이벤트 전/후) 신규 사용자 증감율 */
+  newUvChangePct90: number | null;
   mauBefore: number;
   mauAfter: number;
+  /** 30일 윈도우(이벤트 전/후) 활성 사용자(MAU) 증감율 */
   mauChangePct: number | null;
+  /** 90일(3개월) 윈도우(이벤트 전/후) 활성 사용자(MAU) 증감율 */
+  mauChangePct90: number | null;
   comment: string;
 }
 
@@ -265,24 +276,32 @@ function eventTypeLabel(t: EcosystemEvent['type']): string {
 
 export function buildEventImpactTable(daily: DailyMetricRow[], windowDays = 30): EventImpactRow[] {
   const rows: EventImpactRow[] = [];
-  const services = [NE_TUTOR, '문법문제뱅크', 'NELT', '어휘출제마법사', '클래스카드', '교재자료'];
+  const services = [NE_TUTOR, '문법문제뱅크', '문법예문검색', 'NELT', '어휘출제마법사', '클래스카드', '교재자료'];
+
+  const pct = (a: number, b: number) => (b === 0 ? null : ((a - b) / b) * 100);
+
+  /** 주어진 윈도우 일수로 (이벤트 전 / 후) 비교 결과를 반환 */
+  const compare = (anchor: string, svc: string, windowD: number) => {
+    const beforeStart = addDays(anchor, -windowD);
+    const beforeEnd = addDays(anchor, -1);
+    const afterStart = anchor;
+    const afterEnd = addDays(anchor, windowD - 1);
+    const newB = sumInRange(daily, svc, beforeStart, beforeEnd, (r) => r.newUsers);
+    const newA = sumInRange(daily, svc, afterStart, afterEnd, (r) => r.newUsers);
+    const mauB = maxActiveInRange(daily, svc, beforeStart, beforeEnd);
+    const mauA = maxActiveInRange(daily, svc, afterStart, afterEnd);
+    return { newB, newA, mauB, mauA, nPct: pct(newA, newB), mPct: pct(mauA, mauB) };
+  };
 
   for (const ev of ECOSYSTEM_EVENTS) {
     const anchor = ev.anchorDate;
-    const beforeStart = addDays(anchor, -windowDays);
-    const beforeEnd = addDays(anchor, -1);
-    const afterStart = anchor;
-    const afterEnd = addDays(anchor, windowDays - 1);
 
     for (const svc of services) {
-      const newB = sumInRange(daily, svc, beforeStart, beforeEnd, (r) => r.newUsers);
-      const newA = sumInRange(daily, svc, afterStart, afterEnd, (r) => r.newUsers);
-      const mauB = maxActiveInRange(daily, svc, beforeStart, beforeEnd);
-      const mauA = maxActiveInRange(daily, svc, afterStart, afterEnd);
-      const pct = (a: number, b: number) => (b === 0 ? null : ((a - b) / b) * 100);
+      const w30 = compare(anchor, svc, windowDays);
+      const w90 = compare(anchor, svc, 90);
 
-      const nPct = pct(newA, newB);
-      const mPct = pct(mauA, mauB);
+      const nPct = w30.nPct;
+      const mPct = w30.mPct;
 
       let comment = '변화 폭이 작거나 표본 구간이 짧아 데이터 해석은 보류합니다.';
       if (nPct != null && nPct > 150) {
@@ -303,12 +322,14 @@ export function buildEventImpactTable(daily: DailyMetricRow[], windowDays = 30):
         eventType: eventTypeLabel(ev.type),
         eventName: ev.name,
         impactedService: svc,
-        newUvBefore: Math.round(newB),
-        newUvAfter: Math.round(newA),
-        newUvChangePct: nPct,
-        mauBefore: Math.round(mauB),
-        mauAfter: Math.round(mauA),
-        mauChangePct: mPct,
+        newUvBefore: Math.round(w30.newB),
+        newUvAfter: Math.round(w30.newA),
+        newUvChangePct: w30.nPct,
+        newUvChangePct90: w90.nPct,
+        mauBefore: Math.round(w30.mauB),
+        mauAfter: Math.round(w30.mauA),
+        mauChangePct: w30.mPct,
+        mauChangePct90: w90.mPct,
         comment,
       });
     }

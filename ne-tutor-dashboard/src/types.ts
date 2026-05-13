@@ -66,3 +66,29 @@ export interface GrammarOverlapFlow {
   count: number;
   pct: number;
 }
+
+/** E-Book 시트(년·월·클릭수) 월별 원시 행 */
+export interface EbookMonthlyRow {
+  year: number;
+  month: number;
+  monthKey: string;
+  clicks: number;
+}
+
+/**
+ * 월간 통합 xlsx에서 추출한 시트별 월간 데이터.
+ * 활성사용자수=MAU, 새사용자수=신규사용자.
+ * 통합회원 시트는 PC/Mobile/교강사의 신규가입 수만 가짐(MAU 없음).
+ */
+export interface MonthlyByDeviceRow {
+  /** 표시용 서비스 키 (예: 'NE Tutor', 'NELT', '클래스카드', '문법문제', '문법예문', '어휘출제', '교재자료', '통합회원') */
+  service: string;
+  /** YYYY-MM */
+  month: string;
+  pcMau: number;
+  moMau: number;
+  pcNew: number;
+  moNew: number;
+  /** 통합회원 시트의 '교강사' 신규가입 행 (그 외 서비스는 0) */
+  teacherNew: number;
+}

@@ -1,24 +1,58 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout, Shape } from 'plotly.js';
-import type { EcosystemEvent, YearlyMetricRow } from '../types';
-import { assignEventAnnotationLanes } from '../utils/trendEventLayout';
-import { APP_FONT_FAMILY, PLOTLY_HOVERLABEL } from '../fonts';
-import { TREND_SERIES_NAMES } from './TrendChart';
+import type { EcosystemEvent, MonthlyByDeviceRow, YearlyMetricRow } from '../types';
+import { assignEventAnnotationLanes, splitEventNameToTwoLines } from '../utils/trendEventLayout';
+import { APP_FONT_FAMILY } from '../fonts';
+import {
+  SERIES_STYLE,
+  TREND_PRIMARY_NAMES,
+  TREND_SERIES_NAMES,
+  TREND_SERVICE_ROW,
+  type TrendSeriesName,
+} from './TrendChart';
 
-const SERIES_STYLE: Record<
-  (typeof TREND_SERIES_NAMES)[number],
-  { color: string; dash: 'solid' | 'dot' }
-> = {
-  'NE Tutor MAU': { color: '#60a5fa', dash: 'solid' },
-  'NE Tutor 신규 사용자(월합)': { color: '#93c5fd', dash: 'dot' },
-  '문법문제뱅크 활성 사용자': { color: '#f472b6', dash: 'solid' },
-  '문법문제뱅크 신규 사용자(월합)': { color: '#f9a8d4', dash: 'dot' },
-  'NELT MAU': { color: '#fbbf24', dash: 'solid' },
-  '어휘출제마법사 MAU': { color: '#34d399', dash: 'solid' },
-  '클래스카드 MAU': { color: '#a78bfa', dash: 'solid' },
-  '교재자료 MAU': { color: '#fb923c', dash: 'solid' },
-};
+function hexToRgba(hex: string, a: number): string {
+  const m = hex.replace('#', '');
+  const r = parseInt(m.slice(0, 2), 16);
+  const g = parseInt(m.slice(2, 4), 16);
+  const b = parseInt(m.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+const AREA_FILL_NAMES = new Set<string>(['NE Tutor MAU', 'NE Tutor 신규사용자']);
+const BAR_NAMES = new Set<string>(['통합회원']);
+
+interface HoverServiceData {
+  name: string;
+  color: string;
+  pcMau: number;
+  moMau: number;
+  pcNew: number;
+  moNew: number;
+  teacherNew?: number;
+  hasMau: boolean;
+  newOnly?: boolean;
+}
+
+interface HoverState {
+  x: string;
+  primary: HoverServiceData[];
+  secondary: HoverServiceData[];
+  left: number;
+  top: number;
+}
+
+function fmtIntKo(n: number): string {
+  return new Intl.NumberFormat('ko-KR').format(n);
+}
+
+function mauColorForService(svc: string): string {
+  if (svc === 'NE Tutor') return SERIES_STYLE['NE Tutor MAU'].color;
+  if (svc === '통합회원') return SERIES_STYLE['통합회원'].color;
+  const key = `${svc} MAU` as TrendSeriesName;
+  return SERIES_STYLE[key]?.color ?? '#94a3b8';
+}
 
 function yearKeyFromAnchor(iso: string): string {
   return iso.slice(0, 4);
@@ -91,8 +125,12 @@ const initialVisible = (): Record<string, boolean> =>
 
 export function TrendChartYearly(props: {
   yearly: YearlyMetricRow[];
+  /** 월간 by-device 원시 행 — 호버 시 PC/MO 분해값 계산용 */
+  monthlyByDevice: readonly MonthlyByDeviceRow[];
   rangeStart: string;
   rangeEnd: string;
+  showPC: boolean;
+  showMobile: boolean;
   logScale: boolean;
   events: EcosystemEvent[];
   services: readonly string[];
@@ -101,6 +139,7 @@ export function TrendChartYearly(props: {
   const plotRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState<Record<string, boolean>>(initialVisible);
   const [isFs, setIsFs] = useState(false);
+  const [hover, setHover] = useState<HoverState | null>(null);
 
   const seriesData = useMemo(() => {
     const years = yearsInRange(props.rangeStart, props.rangeEnd);
@@ -115,33 +154,119 @@ export function TrendChartYearly(props: {
     const mauY = (svc: string) => years.map((y) => by.get(svc)?.get(y)?.mauEstimate ?? null);
     const newY = (svc: string) => years.map((y) => by.get(svc)?.get(y)?.newUsersSum ?? null);
 
-    const series: {
-      name: (typeof TREND_SERIES_NAMES)[number];
-      y: (number | null)[];
-    }[] = [
+    const series: { name: TrendSeriesName; y: (number | null)[] }[] = [
       { name: 'NE Tutor MAU', y: mauY('NE Tutor') },
-      { name: 'NE Tutor 신규 사용자(월합)', y: newY('NE Tutor') },
-      { name: '문법문제뱅크 활성 사용자', y: mauY('문법문제뱅크') },
-      { name: '문법문제뱅크 신규 사용자(월합)', y: newY('문법문제뱅크') },
-      { name: 'NELT MAU', y: mauY('NELT') },
-      { name: '어휘출제마법사 MAU', y: mauY('어휘출제마법사') },
-      { name: '클래스카드 MAU', y: mauY('클래스카드') },
-      { name: '교재자료 MAU', y: mauY('교재자료') },
+      { name: 'NE Tutor 신규사용자', y: newY('NE Tutor') },
+      { name: '통합회원', y: newY('통합회원') },
+      ...TREND_SERVICE_ROW.flatMap((s) => [
+        { name: `${s.display} MAU` as TrendSeriesName, y: mauY(s.dataService) },
+        { name: `${s.display} 신규사용자` as TrendSeriesName, y: newY(s.dataService) },
+      ]),
     ];
 
     return { years, series, markerSize };
   }, [props.yearly, props.rangeStart, props.rangeEnd]);
 
+  /**
+   * 연도별 PC/MO 집계 룩업: year -> service -> { pcMau, moMau, pcNew, moNew, teacherNew }.
+   * MAU 는 해당 연도 내 월별 PC/MO 최댓값, 신규사용자는 합계.
+   */
+  const pcMoYearLookup = useMemo(() => {
+    const map = new Map<string, Map<string, MonthlyByDeviceRow>>();
+    for (const r of props.monthlyByDevice) {
+      const yr = r.month.slice(0, 4);
+      if (!map.has(yr)) map.set(yr, new Map());
+      const svcMap = map.get(yr)!;
+      const prev = svcMap.get(r.service);
+      if (!prev) {
+        svcMap.set(r.service, {
+          service: r.service,
+          month: yr,
+          pcMau: r.pcMau,
+          moMau: r.moMau,
+          pcNew: r.pcNew,
+          moNew: r.moNew,
+          teacherNew: r.teacherNew,
+        });
+      } else {
+        prev.pcMau = Math.max(prev.pcMau, r.pcMau);
+        prev.moMau = Math.max(prev.moMau, r.moMau);
+        prev.pcNew += r.pcNew;
+        prev.moNew += r.moNew;
+        prev.teacherNew += r.teacherNew;
+      }
+    }
+    return map;
+  }, [props.monthlyByDevice]);
+
+  /** 이벤트 말풍선 레인 수 사전 계산 — top margin 및 차트 div 높이 결정에 사용 */
+  const eventLaneMeta = useMemo(() => {
+    const { years } = seriesData;
+    if (years.length === 0) return { maxLanes: 0 };
+    const firstY = years[0];
+    const lastY = years[years.length - 1];
+    const eventsVisible = props.events.filter((ev) => {
+      const yk = ev.anchorDate.slice(0, 4);
+      return yk >= firstY && yk <= lastY;
+    });
+    const meta = assignEventAnnotationLanes(eventsVisible, years, (anchor) =>
+      years.indexOf(anchor.slice(0, 4)),
+    );
+    const maxLanes = meta.length === 0 ? 0 : Math.max(...meta.map((m) => m.lane + 1));
+    return { maxLanes };
+  }, [seriesData, props.events]);
+
+  /** plot 본문 ~360px 이상 보장하는 동적 높이 */
+  const chartHeight = useMemo(() => {
+    const BUBBLE_LANE_SPACING_PX = 58;
+    const BUBBLE_HEIGHT_PX = 50;
+    const topMargin = Math.max(
+      60,
+      eventLaneMeta.maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 10,
+    );
+    return topMargin + 360 + 56;
+  }, [eventLaneMeta.maxLanes]);
+
   const traces = useMemo((): Data[] => {
     const { years, series, markerSize } = seriesData;
+    /**
+     * Plotly는 trace 배열의 앞쪽 원소를 먼저 그리고 뒤쪽 원소를 위에 덮어 그립니다.
+     * NE Tutor 면 채움 그래프가 다른 라인을 가리지 않도록 가장 먼저(맨 뒤) 그리고,
+     * 그 위에 막대(통합회원) → 나머지 라인 시리즈 순으로 배치합니다.
+     */
+    const orderedSeries = [
+      ...series.filter((s) => AREA_FILL_NAMES.has(s.name)),
+      ...series.filter((s) => BAR_NAMES.has(s.name)),
+      ...series.filter((s) => !AREA_FILL_NAMES.has(s.name) && !BAR_NAMES.has(s.name)),
+    ];
+
     const out: Data[] = [];
-    for (const s of series) {
+    for (const s of orderedSeries) {
       const on = visible[s.name] !== false;
       const st = SERIES_STYLE[s.name];
       const yRaw = s.y;
       const y = props.logScale
         ? yRaw.map((v) => (v != null && Number.isFinite(v) && v > 0 ? v : null))
         : yRaw.map((v) => (v != null && Number.isFinite(v) ? v : null));
+
+      if (BAR_NAMES.has(s.name)) {
+        out.push({
+          type: 'bar',
+          name: s.name,
+          x: years,
+          y,
+          visible: on,
+          showlegend: false,
+          marker: { color: hexToRgba(st.color, 0.75), line: { color: st.color, width: 1 } },
+          hoverinfo: 'none',
+        });
+        continue;
+      }
+
+      const fillProps = AREA_FILL_NAMES.has(s.name)
+        ? { fill: 'tozeroy' as const, fillcolor: hexToRgba(st.color, 0.14) }
+        : {};
+
       out.push({
         type: 'scatter',
         mode: 'lines+markers',
@@ -151,10 +276,15 @@ export function TrendChartYearly(props: {
         visible: on,
         showlegend: false,
         connectgaps: false,
-        line: { shape: 'linear', width: 2, dash: st.dash === 'solid' ? undefined : st.dash, color: st.color },
+        ...fillProps,
+        line: {
+          shape: 'linear',
+          width: AREA_FILL_NAMES.has(s.name) ? 2.4 : 2,
+          dash: st.dash === 'solid' ? undefined : st.dash,
+          color: st.color,
+        },
         marker: { size: markerSize, line: { width: 0 }, color: st.color },
-        hovertemplate: `${s.name}<br>%{customdata}년<br>%{y:,}명<extra></extra>`,
-        customdata: years,
+        hoverinfo: 'none',
       });
     }
     return out;
@@ -178,11 +308,11 @@ export function TrendChartYearly(props: {
       }
     }
     if (props.logScale) {
-      yMin = Math.max(yMin * 0.5, 1);
-      yMax = yMax * 1.15;
+      yMin = Math.max(yMin * 0.35, 1);
+      yMax = yMax * 1.35;
     } else {
-      yMin = Math.max(0, yMin * 0.9);
-      yMax = yMax * 1.1;
+      yMin = Math.max(0, yMin * 0.8);
+      yMax = yMax * 1.2;
     }
     return { yMax, yMin };
   }, [seriesData, props.logScale, visible]);
@@ -195,6 +325,22 @@ export function TrendChartYearly(props: {
       return next;
     });
   }, []);
+
+  const secondaryNames = useMemo<TrendSeriesName[]>(
+    () => TREND_SERIES_NAMES.filter((n) => !TREND_PRIMARY_NAMES.includes(n)),
+    [],
+  );
+  const allSecondaryOn = secondaryNames.every((n) => visible[n] !== false);
+  const toggleAllSecondary = useCallback(() => {
+    setVisible((prev) => {
+      const target = !secondaryNames.every((n) => prev[n] !== false);
+      const next = { ...prev };
+      for (const n of secondaryNames) next[n] = target;
+      const on = TREND_SERIES_NAMES.filter((n) => next[n] !== false).length;
+      if (on === 0) return prev;
+      return next;
+    });
+  }, [secondaryNames]);
 
   const resizePlot = useCallback(() => {
     const el = plotRef.current;
@@ -271,18 +417,19 @@ export function TrendChartYearly(props: {
     const annMeta = assignEventAnnotationLanes(eventsVisible, years, (anchor) =>
       years.indexOf(yearKeyFromAnchor(anchor)),
     );
-    const yStep = 0.034;
+    const BUBBLE_LANE_SPACING_PX = 58;
+    const BUBBLE_HEIGHT_PX = 50;
     const annotations = annMeta.map(({ ev, lane, xshift }) => {
       const border = eventLineColor(ev);
-      const shortName = ev.name.length > 16 ? `${ev.name.slice(0, 16)}…` : ev.name;
-      const yPaper = 1.012 + lane * yStep;
+      const lines = splitEventNameToTwoLines(ev.name);
       return {
         x: yearKeyFromAnchor(ev.anchorDate),
         xref: 'x' as const,
         xshift,
-        y: yPaper,
+        y: 1,
         yref: 'paper' as const,
-        text: `<b>${eventBubbleText(ev)}</b><br>${shortName}`,
+        yshift: lane * BUBBLE_LANE_SPACING_PX + 6,
+        text: `<b>${eventBubbleText(ev)}</b><br>${lines.join('<br>')}`,
         showarrow: false,
         arrowhead: 0,
         arrowwidth: 0,
@@ -293,14 +440,14 @@ export function TrendChartYearly(props: {
         bgcolor: 'rgba(17,24,39,0.96)',
         bordercolor: border,
         borderwidth: 1.5,
-        borderpad: 6,
+        borderpad: 5,
         font: { family: APP_FONT_FAMILY, size: 9, color: '#f9fafb' },
         align: 'center' as const,
       };
     });
 
     const maxLanes = annMeta.length === 0 ? 0 : Math.max(...annMeta.map((a) => a.lane + 1));
-    const topMargin = Math.min(320, 60 + maxLanes * 40);
+    const topMargin = Math.max(60, maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 10);
 
     const yaxis: Partial<Layout['yaxis']> = {
       type: props.logScale ? 'log' : 'linear',
@@ -321,8 +468,7 @@ export function TrendChartYearly(props: {
       paper_bgcolor: '#1f2937',
       plot_bgcolor: '#1f2937',
       font: { color: '#e5e7eb', family: APP_FONT_FAMILY, size: 11 },
-      hoverlabel: { ...PLOTLY_HOVERLABEL },
-      margin: { t: topMargin, r: 24, b: 56, l: 72 },
+      margin: { t: topMargin, r: 24, b: 56, l: 76 },
       showlegend: false,
       xaxis: {
         type: 'category',
@@ -338,7 +484,8 @@ export function TrendChartYearly(props: {
       yaxis,
       shapes,
       annotations,
-      hovermode: 'x unified',
+      hovermode: 'closest',
+      bargap: 0.25,
     };
 
     Plotly.newPlot(el, traces, layout, {
@@ -349,10 +496,64 @@ export function TrendChartYearly(props: {
       modeBarButtonsToRemove: ['lasso2d', 'select2d'],
     });
 
+    const handleHover = (data: Readonly<{ points: { x: string }[]; event: MouseEvent }>) => {
+      const point = data.points?.[0];
+      if (!point) return;
+      const xv = String(point.x);
+      const yearMap = pcMoYearLookup.get(xv);
+      if (!yearMap) return;
+
+      const makeBlock = (svc: string, opts?: { newOnly?: boolean }): HoverServiceData | null => {
+        const r = yearMap.get(svc);
+        if (!r) return null;
+        return {
+          name: svc,
+          color: mauColorForService(svc),
+          pcMau: r.pcMau,
+          moMau: r.moMau,
+          pcNew: r.pcNew,
+          moNew: r.moNew,
+          teacherNew: svc === '통합회원' ? r.teacherNew : undefined,
+          hasMau: !opts?.newOnly,
+          newOnly: opts?.newOnly,
+        };
+      };
+
+      const primary: HoverServiceData[] = [];
+      const neBlock = makeBlock('NE Tutor');
+      if (neBlock) primary.push(neBlock);
+      const memberBlock = makeBlock('통합회원', { newOnly: true });
+      if (memberBlock) primary.push(memberBlock);
+
+      const secondary = ['NELT', '문법문제', '문법예문', '어휘출제', '클래스카드']
+        .map((s) => makeBlock(s))
+        .filter((b): b is HoverServiceData => b != null);
+
+      const shell = shellRef.current;
+      if (!shell) return;
+      const rect = shell.getBoundingClientRect();
+      setHover({
+        x: xv,
+        primary,
+        secondary,
+        left: data.event.clientX - rect.left,
+        top: data.event.clientY - rect.top,
+      });
+    };
+    const handleUnhover = () => setHover(null);
+    const pe = el as unknown as {
+      on: (ev: string, cb: (d: never) => void) => void;
+      removeAllListeners?: (ev: string) => void;
+    };
+    pe.on('plotly_hover', handleHover as unknown as (d: never) => void);
+    pe.on('plotly_unhover', handleUnhover as unknown as (d: never) => void);
+
     return () => {
+      pe.removeAllListeners?.('plotly_hover');
+      pe.removeAllListeners?.('plotly_unhover');
       Plotly.purge(el);
     };
-  }, [traces, props.logScale, props.events, seriesData, yMax, yMin]);
+  }, [traces, props.logScale, props.events, seriesData, yMax, yMin, visible, pcMoYearLookup, props.showPC, props.showMobile]);
 
   void props.services;
 
@@ -360,27 +561,167 @@ export function TrendChartYearly(props: {
     <div ref={shellRef} className="trend-chart-shell chart-box">
       <div className="trend-chart-toolbar">
         <div className="trend-series-toggles" aria-label="표시할 시리즈 선택">
-          {TREND_SERIES_NAMES.map((name) => {
-            const st = SERIES_STYLE[name];
-            const on = visible[name] !== false;
-            return (
-              <label key={name} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
-                <input type="checkbox" checked={on} onChange={() => toggleSeries(name)} />
-                <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
-                <span>{name}</span>
-              </label>
-            );
-          })}
+          <div className="trend-toggle-group trend-toggle-group--primary">
+            {TREND_PRIMARY_NAMES.map((name) => {
+              const st = SERIES_STYLE[name];
+              const on = visible[name] !== false;
+              return (
+                <label key={name} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
+                  <input type="checkbox" checked={on} onChange={() => toggleSeries(name)} />
+                  <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
+                  <span>{name}</span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="trend-toggle-group trend-toggle-group--others">
+            <label className="trend-trace-toggle trend-trace-toggle--all">
+              <input type="checkbox" checked={allSecondaryOn} onChange={toggleAllSecondary} />
+              <span>전체</span>
+            </label>
+            {(['MAU', '신규사용자'] as const).map((kind) => (
+              <div key={kind} className="trend-service-row">
+                <span className="trend-service-row-label">{kind}</span>
+                {TREND_SERVICE_ROW.map((s) => {
+                  const name = `${s.display} ${kind}` as TrendSeriesName;
+                  const st = SERIES_STYLE[name];
+                  const on = visible[name] !== false;
+                  return (
+                    <label key={name} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
+                      <input type="checkbox" checked={on} onChange={() => toggleSeries(name)} />
+                      <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
+                      <span>{s.display}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
         <button type="button" className="btn trend-fs-btn" onClick={toggleFullscreen} title="Plotly 툴바의 확대 아이콘은 축 자동 맞춤입니다. 여기서 차트 영역 전체화면을 켜고 끕니다.">
           {isFs ? '전체 화면 종료' : '전체 화면'}
         </button>
       </div>
-      <div ref={plotRef} style={{ width: '100%', height: 440 }} />
-      <p style={{ fontSize: '0.75rem', color: 'var(--muted)', margin: '8px 10px 0' }}>
-        연도 축은 <strong>이 섹션의 기간 검색</strong>에 맞춥니다. 신규 사용자(월합) 라벨은 월별 차트와 동일한 범례명을
-        쓰며, 년간 합계를 표시합니다.
-      </p>
+      <div ref={plotRef} style={{ width: '100%', height: chartHeight }} />
+      {hover && (hover.primary.length > 0 || hover.secondary.length > 0) && (
+        <YearlyHoverCard
+          hover={hover}
+          containerEl={shellRef.current}
+          showPC={props.showPC}
+          showMobile={props.showMobile}
+        />
+      )}
+    </div>
+  );
+}
+
+function YearlyHoverCard({
+  hover,
+  containerEl,
+  showPC,
+  showMobile,
+}: {
+  hover: HoverState;
+  containerEl: HTMLDivElement | null;
+  showPC: boolean;
+  showMobile: boolean;
+}) {
+  const rect = containerEl?.getBoundingClientRect();
+  const containerW = rect?.width ?? 800;
+  const estW = 540;
+
+  let left = hover.left + 16;
+  const top = Math.max(8, Math.min(hover.top - 10, (rect?.height ?? 600) - 40));
+  if (left + estW > containerW - 4) left = Math.max(8, hover.left - estW - 12);
+
+  return (
+    <div
+      className="trend-hover-card"
+      style={{ position: 'absolute', left, top, zIndex: 90, pointerEvents: 'none' }}
+    >
+      <div className="trend-hover-title">{hover.x}년</div>
+      {hover.primary.length > 0 && (
+        <div className="trend-hover-section trend-hover-section--primary">
+          {hover.primary.map((s) => (
+            <YearlyHoverBlock key={s.name} block={s} showPC={showPC} showMobile={showMobile} />
+          ))}
+        </div>
+      )}
+      {hover.primary.length > 0 && hover.secondary.length > 0 && (
+        <div className="trend-hover-divider" />
+      )}
+      {hover.secondary.length > 0 && (
+        <div className="trend-hover-section trend-hover-section--secondary">
+          {hover.secondary.map((s) => (
+            <YearlyHoverBlock key={s.name} block={s} showPC={showPC} showMobile={showMobile} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function YearlyHoverBlock({
+  block,
+  showPC,
+  showMobile,
+}: {
+  block: HoverServiceData;
+  showPC: boolean;
+  showMobile: boolean;
+}) {
+  const both = showPC && showMobile;
+  const teacher = block.teacherNew ?? 0;
+
+  const mauLine = () => {
+    if (!block.hasMau) return null;
+    if (both) {
+      return (
+        <span>
+          PC {fmtIntKo(block.pcMau)}명, MO {fmtIntKo(block.moMau)}명
+        </span>
+      );
+    }
+    if (showPC) return <span>PC {fmtIntKo(block.pcMau)}명</span>;
+    return <span>MO {fmtIntKo(block.moMau)}명</span>;
+  };
+
+  const newLine = () => {
+    if (both) {
+      const extra =
+        block.newOnly && teacher > 0 ? (
+          <span>
+            {' '}
+            · 교강사 {fmtIntKo(teacher)}명
+          </span>
+        ) : null;
+      return (
+        <span>
+          PC {fmtIntKo(block.pcNew)}명, MO {fmtIntKo(block.moNew)}명
+          {extra}
+        </span>
+      );
+    }
+    if (showPC) return <span>PC {fmtIntKo(block.pcNew)}명</span>;
+    return <span>MO {fmtIntKo(block.moNew)}명</span>;
+  };
+
+  return (
+    <div className="trend-hover-block">
+      <div className="trend-hover-block-name">
+        <span className="trend-hover-swatch" style={{ background: block.color }} />
+        <span>{block.name}</span>
+      </div>
+      {block.hasMau && (
+        <div className="trend-hover-row">
+          <span className="trend-hover-label">MAU</span>
+          <span className="trend-hover-value">{mauLine()}</span>
+        </div>
+      )}
+      <div className="trend-hover-row">
+        <span className="trend-hover-label">{block.newOnly ? '신규가입' : '신규사용자'}</span>
+        <span className="trend-hover-value">{newLine()}</span>
+      </div>
     </div>
   );
 }

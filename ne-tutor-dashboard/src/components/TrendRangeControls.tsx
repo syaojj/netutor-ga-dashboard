@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { DeviceFilter } from '../types';
 
 const row: CSSProperties = {
   display: 'flex',
@@ -27,6 +28,9 @@ export function TrendRangeControls(props: {
   bounds: { min: string; max: string };
   /** 월별: 일 단위 프리셋 / 년간: 연 단위 프리셋 */
   presetMode: 'monthly' | 'yearly';
+  /** 월별 트렌드에서만 디바이스 선택을 함께 노출 */
+  device?: DeviceFilter;
+  onDevice?: (d: DeviceFilter) => void;
 }) {
   return (
     <div className="trend-range-controls" style={row} aria-label={props.title}>
@@ -84,6 +88,20 @@ export function TrendRangeControls(props: {
         <input type="checkbox" checked={props.logScale} onChange={(e) => props.onLogScale(e.target.checked)} />
         Y축 로그 스케일
       </label>
+
+      {props.device !== undefined && props.onDevice && (
+        <>
+          <span style={{ ...label, marginLeft: 8 }}>디바이스</span>
+          <select
+            value={props.device}
+            onChange={(e) => props.onDevice!(e.target.value as DeviceFilter)}
+          >
+            <option value="all">전체 (Mobile+PC 합산)</option>
+            <option value="M">Mobile</option>
+            <option value="PC">PC</option>
+          </select>
+        </>
+      )}
     </div>
   );
 }

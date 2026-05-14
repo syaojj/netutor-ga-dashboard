@@ -224,35 +224,37 @@ export function MonthlyTrendSummaryCards(props: {
         <p className="monthly-trend-summary-lede">
           GA에서 월 단위로 중복 제거된 MAU/신규사용자를 선택 기간 개월 수로 평균한 값입니다. 선택 기간 전체 고유 사용자 수와는
           다릅니다.{' '}
-          <button
-            type="button"
-            className="monthly-trend-summary-info"
-            aria-expanded={helpOpen}
-            aria-controls="monthly-avg-help-layer"
-            aria-label="NE Tutor·서비스별 월평균 추가 안내"
-            onClick={() => setHelpOpen((v) => !v)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M12 16v-4M12 8h.01M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10Z"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+          <span className="monthly-trend-summary-help-anchor">
+            <button
+              type="button"
+              className="monthly-trend-summary-info"
+              aria-expanded={helpOpen}
+              aria-controls="monthly-avg-help-layer"
+              aria-label="NE Tutor·서비스별 월평균 추가 안내"
+              onClick={() => setHelpOpen((v) => !v)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 16v-4M12 8h.01M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10Z"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            {helpOpen ? (
+              <div
+                id="monthly-avg-help-layer"
+                className="monthly-trend-summary-help-layer"
+                role="region"
+                aria-label="월평균 산출 방식 안내"
+              >
+                <div className="monthly-trend-summary-help-layer__body">{MONTHLY_AVG_HELP_TOOLTIP}</div>
+              </div>
+            ) : null}
+          </span>
         </p>
-        {helpOpen ? (
-          <div
-            id="monthly-avg-help-layer"
-            className="monthly-trend-summary-help-layer"
-            role="region"
-            aria-label="월평균 산출 방식 안내"
-          >
-            <div className="monthly-trend-summary-help-layer__body">{MONTHLY_AVG_HELP_TOOLTIP}</div>
-          </div>
-        ) : null}
       </div>
       <div className="monthly-trend-summary-grid monthly-trend-summary-grid--fluid">
         <div className="monthly-trend-ne-tower">

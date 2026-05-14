@@ -549,6 +549,10 @@ export default function App() {
           <div className="trend-group-node yoy-chart-section-node">
             <div className="trend-group-main trend-subsection-panel">
               <TrendSubsectionTitle>선택 기간 전년 동월 추이</TrendSubsectionTitle>
+              <p className="yoy-chart-section-lede">
+                실선 당월 · 점선 전년 동월 · MAU·신규 동일 세로축(명) / 같은 월 축에 당월과 전년 동월을 겹쳐 봅니다. (예:
+                2024-03 vs 2023-03)
+              </p>
               <Suspense
                 fallback={
                   <div className="chart-lazy-fallback chart-lazy-fallback--trend-block" role="status">

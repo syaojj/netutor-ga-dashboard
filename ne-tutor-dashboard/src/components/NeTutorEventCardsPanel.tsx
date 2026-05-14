@@ -349,13 +349,23 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
           />
         ))}
       </svg>
-      {tip && (
+      {tip && (() => {
+        /** 툴팁을 커서 바로 아래에 두고, 하단이 잘리면 커서 위로 옮김 */
+        const EST_W = 172;
+        const EST_H = 120;
+        const GAP = 12;
+        const wrap = wrapRef.current;
+        const cw = wrap?.clientWidth ?? 300;
+        const ch = wrap?.clientHeight ?? 100;
+        let left = tip.left + 8;
+        left = Math.max(4, Math.min(left, cw - EST_W - 4));
+        let top = tip.top + GAP;
+        if (top + EST_H > ch - 4) top = tip.top - EST_H - GAP;
+        top = Math.max(4, Math.min(top, ch - EST_H - 4));
+        return (
         <div
           className="event-card-spark-tooltip"
-          style={{
-            left: Math.min(tip.left + 10, (wrapRef.current?.clientWidth ?? 300) - 172),
-            top: Math.max(4, tip.top - 108),
-          }}
+          style={{ left, top }}
         >
           <div className="event-card-spark-tooltip-title">{sparkLabels[tip.idx]}</div>
           {(
@@ -372,7 +382,8 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
             </div>
           ))}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

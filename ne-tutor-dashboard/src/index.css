@@ -195,6 +195,15 @@ input[type='date'] {
   margin-bottom: 12px;
 }
 
+/* 월평균 요약 ↔ MAU 추이 차트 블록 사이 여백 축소 */
+.section--monthly-trend-analysis .trend-subsection + .trend-section-group {
+  margin-top: 8px;
+}
+
+.section--monthly-trend-analysis .trend-section-group {
+  gap: 8px;
+}
+
 .trend-subsection {
   margin: 0;
   padding: 0;
@@ -230,6 +239,13 @@ input[type='date'] {
 
 .trend-group-main > .trend-subsection-title {
   margin: 0 0 8px;
+}
+
+.trend-group-main > .yoy-chart-section-lede {
+  margin: 0 0 12px;
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .trend-subsection-title {
@@ -273,7 +289,7 @@ input[type='date'] {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 6px 14px;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
 }
 
 .monthly-trend-summary-head-line {
@@ -307,8 +323,17 @@ input[type='date'] {
   box-shadow: none;
 }
 
+.section--monthly-trend-analysis .trend-chart-shell--flat {
+  padding-top: 0;
+  min-height: 400px;
+}
+
 .trend-subsection .trend-chart-row {
   margin-top: 0;
+}
+
+.section--monthly-trend-analysis .trend-chart-row {
+  margin-top: 6px;
 }
 
 .impact-summary-head--toolbar-only {
@@ -488,17 +513,24 @@ table.data th {
 
 .monthly-trend-summary-lede-block {
   position: relative;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
 }
 
 .monthly-trend-summary-lede-block .monthly-trend-summary-lede {
   margin: 0;
 }
 
+.monthly-trend-summary-lede .monthly-trend-summary-help-anchor {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: text-bottom;
+  position: relative;
+}
+
 .monthly-trend-summary-lede .monthly-trend-summary-info {
   display: inline-flex;
-  vertical-align: -0.2em;
-  margin-left: 2px;
+  vertical-align: unset;
+  margin-left: 0;
 }
 
 .monthly-trend-summary-info {
@@ -525,11 +557,12 @@ table.data th {
 
 .monthly-trend-summary-help-layer {
   position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 80;
-  min-width: min(100%, 280px);
-  max-width: min(440px, calc(100vw - 32px));
+  min-width: min(260px, calc(100vw - 48px));
+  max-width: min(420px, calc(100vw - 48px));
   padding: 12px 14px;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -1285,6 +1318,19 @@ table.data.impact-summary-table .impact-pct-cell {
   box-sizing: border-box;
 }
 
+.mau-trend-chart-fs-wrap {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.trend-fs-btn--below-filters {
+  width: 100%;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
 .mau-trend-query-card__title {
   margin: 0 0 14px;
   font-size: 0.95rem;
@@ -1579,9 +1625,42 @@ table.data.impact-summary-table .impact-pct-cell {
 
 .yoy-legend-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 2px;
+}
+
+.yoy-metric-chips--one-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.yoy-metric-pair {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.yoy-metric-pair-label {
+  min-width: 2rem;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: -0.02em;
+}
+
+.yoy-metric-row-sep {
+  margin: 0 4px 0 2px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1;
+  user-select: none;
 }
 
 .yoy-metric-chips {

@@ -24,9 +24,7 @@ const TREND_PLOT_CONFIG: Partial<Config> = {
   responsive: true,
   displaylogo: false,
   locale: 'ko',
-  displayModeBar: true,
-  /** lasso/select 제외 + autoScale: 로케일상 '전체화면'으로 보이나 실제 전체화면 아님·혼동 방지 */
-  modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+  displayModeBar: false,
   doubleClick: 'reset+autosize',
 };
 
@@ -875,18 +873,18 @@ export function TrendChart(props: {
               })}
             </div>
           </div>
-        </aside>
-        <div className="trend-chart-plot-col">
-          <div className="trend-chart-plot-head">
+          <div className="mau-trend-chart-fs-wrap">
             <button
               type="button"
-              className="btn trend-fs-btn"
+              className="btn trend-fs-btn trend-fs-btn--below-filters"
               onClick={toggleFullscreen}
-              title="Plotly 툴바의 확대 아이콘은 축 자동 맞춤입니다. 여기서 차트 영역 전체화면을 켜고 끕니다."
+              title="차트 영역(그래프·범례 포함)을 전체 화면으로 켜고 끕니다."
             >
               {isFs ? '전체 화면 종료' : '전체 화면'}
             </button>
           </div>
+        </aside>
+        <div className="trend-chart-plot-col">
           <div ref={plotRef} className="trend-chart-plot-inner" style={{ width: '100%', height: chartHeight }} />
         </div>
       </div>

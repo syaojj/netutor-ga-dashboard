@@ -1,6 +1,6 @@
 /**
  * 전년 동월 비교: 검색 구간의 각 월과 전년 동월을 한 축에 겹쳐 표시.
- * PC·Mobile 각각 MAU(좌 Y) + 신규(우 Y). 서비스 단일 선택.
+ * PC·Mobile 각각 MAU·신규를 동일 Y축(명)으로 표시. 서비스 단일 선택.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Plotly from 'plotly.js-dist-min';
@@ -12,14 +12,14 @@ import { TREND_SERVICE_ROW } from './trendSeriesConfig';
 
 /**
  * 전년 동월 비교: 지표별 동일 색조 — 당월 실선(진함)·전년 동월 점선(연함).
- * - MAU: 블루 계열
- * - 신규: 오렌지 계열
+ * - MAU: 분홍 계열
+ * - 신규: 청록 계열
  */
 const YOY_METRIC_COLORS = {
-  mauCurrent: '#1d4ed8',
-  mauPrior: '#60a5fa',
-  newCurrent: '#ea580c',
-  newPrior: '#fb923c',
+  mauCurrent: '#be185d',
+  mauPrior: '#f472b6',
+  newCurrent: '#0f766e',
+  newPrior: '#2dd4bf',
 } as const;
 
 const YOY_LEGEND_GROUPS: readonly {
@@ -30,14 +30,14 @@ const YOY_LEGEND_GROUPS: readonly {
     groupLabel: 'MAU',
     chips: [
       { key: 'mau-c', label: '당월', color: YOY_METRIC_COLORS.mauCurrent, dashed: false },
-      { key: 'mau-p', label: '전년 동월', color: YOY_METRIC_COLORS.mauPrior, dashed: true },
+      { key: 'mau-p', label: '전년동월', color: YOY_METRIC_COLORS.mauPrior, dashed: true },
     ],
   },
   {
     groupLabel: '신규',
     chips: [
       { key: 'new-c', label: '당월', color: YOY_METRIC_COLORS.newCurrent, dashed: false },
-      { key: 'new-p', label: '전년 동월', color: YOY_METRIC_COLORS.newPrior, dashed: true },
+      { key: 'new-p', label: '전년동월', color: YOY_METRIC_COLORS.newPrior, dashed: true },
     ],
   },
 ] as const;
@@ -229,14 +229,12 @@ function YoyHoverCard({
   );
 }
 
-interface DualAxisPayload {
+interface YoYPanelPayload {
   title: string;
   device: DeviceSide;
   traces: Data[];
   yMin: number;
   yMax: number;
-  y2Min: number;
-  y2Max: number;
 }
 
 export function YoYCompareChartsGrid(props: {
@@ -281,15 +279,13 @@ export function YoYCompareChartsGrid(props: {
     setYoyHoverTip(null);
   }, [months, selectedService, props.rangeStart, props.rangeEnd]);
 
-  const buildDualPanel = useCallback(
-    (device: DeviceSide): DualAxisPayload => {
+  const buildYoYPanel = useCallback(
+    (device: DeviceSide): YoYPanelPayload => {
       const svc = selectedService;
       const title = device === 'pc' ? 'PC (MAU / 신규)' : 'Mobile (MAU / 신규)';
       const traces: Data[] = [];
       let yMax = 10;
       let yMin = 0;
-      let y2Max = 10;
-      let y2Min = 0;
       const nMonths = months.length;
       const markerSize = nMonths <= 1 ? 9 : nMonths <= 6 ? 6 : 4;
       const cMauC = YOY_METRIC_COLORS.mauCurrent;
@@ -297,29 +293,17 @@ export function YoYCompareChartsGrid(props: {
       const cNewC = YOY_METRIC_COLORS.newCurrent;
       const cNewP = YOY_METRIC_COLORS.newPrior;
 
-      const collect = (
-        vals: (number | null)[],
-        axis: 'y' | 'y2',
-      ) => {
+      /** MAU·신규 모두 동일 Y축 범위 */
+      const collectY = (vals: (number | null)[]) => {
         for (const v of vals) {
           if (v == null || !Number.isFinite(v)) continue;
           if (props.logScale) {
             if (v <= 0) continue;
-            if (axis === 'y') {
-              yMax = Math.max(yMax, v);
-              yMin = yMin === 0 ? v : Math.min(yMin, v);
-            } else {
-              y2Max = Math.max(y2Max, v);
-              y2Min = y2Min === 0 ? v : Math.min(y2Min, v);
-            }
+            yMax = Math.max(yMax, v);
+            yMin = yMin === 0 ? v : Math.min(yMin, v);
           } else {
-            if (axis === 'y') {
-              yMax = Math.max(yMax, v);
-              yMin = Math.min(yMin, v);
-            } else {
-              y2Max = Math.max(y2Max, v);
-              y2Min = Math.min(y2Min, v);
-            }
+            yMax = Math.max(yMax, v);
+            yMin = Math.min(yMin, v);
           }
         }
       };
@@ -350,9 +334,11 @@ export function YoYCompareChartsGrid(props: {
         yMauPrior.push(pM);
         yNewCurr.push(cN);
         yNewPrior.push(pN);
-        collect([cM, pM], 'y');
-        collect([cN, pN], 'y2');
       }
+      collectY(yMauCurr);
+      collectY(yMauPrior);
+      collectY(yNewCurr);
+      collectY(yNewPrior);
 
       traces.push({
         type: 'scatter',
@@ -386,7 +372,7 @@ export function YoYCompareChartsGrid(props: {
         name: '신규 당월',
         x: months,
         y: yNewCurr,
-        yaxis: 'y2',
+        yaxis: 'y',
         hoverinfo: 'none',
         showlegend: false,
         connectgaps: false,
@@ -399,7 +385,7 @@ export function YoYCompareChartsGrid(props: {
         name: '신규 전년 동월',
         x: months,
         y: yNewPrior,
-        yaxis: 'y2',
+        yaxis: 'y',
         hoverinfo: 'none',
         showlegend: false,
         connectgaps: false,
@@ -410,31 +396,23 @@ export function YoYCompareChartsGrid(props: {
       if (props.logScale) {
         yMin = Math.max(yMin * 0.35, 1);
         yMax = yMax * 1.35;
-        y2Min = Math.max(y2Min * 0.35, 1);
-        y2Max = y2Max * 1.35;
       } else {
         yMin = Math.min(0, yMin * 0.95);
         yMax = yMax * 1.12;
-        y2Min = Math.min(0, y2Min * 0.95);
-        y2Max = y2Max * 1.12;
       }
       if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || yMax <= yMin) {
         yMin = props.logScale ? 1 : 0;
         yMax = 10;
       }
-      if (!Number.isFinite(y2Min) || !Number.isFinite(y2Max) || y2Max <= y2Min) {
-        y2Min = props.logScale ? 1 : 0;
-        y2Max = 10;
-      }
 
-      return { title, device, traces, yMin, yMax, y2Min, y2Max };
+      return { title, device, traces, yMin, yMax };
     },
     [byMonth, months, props.logScale, selectedService],
   );
 
   const panelPayloads = useMemo(
-    () => [buildDualPanel('pc'), buildDualPanel('mo')],
-    [buildDualPanel],
+    () => [buildYoYPanel('pc'), buildYoYPanel('mo')],
+    [buildYoYPanel],
   );
 
   const resizePlots = useCallback(() => {
@@ -489,17 +467,12 @@ export function YoYCompareChartsGrid(props: {
         props.logScale && payload.yMax > 0
           ? buildLogYAxisTicks(payload.yMin, payload.yMax)
           : { tickvals: [] as number[], ticktext: [] as string[] };
-      const logY2 =
-        props.logScale && payload.y2Max > 0
-          ? buildLogYAxisTicks(payload.y2Min, payload.y2Max)
-          : { tickvals: [] as number[], ticktext: [] as string[] };
       const linearY = !props.logScale ? buildLinearYAxisTicks(payload.yMin, payload.yMax) : {};
-      const linearY2 = !props.logScale ? buildLinearYAxisTicks(payload.y2Min, payload.y2Max) : {};
 
       const yaxis: Partial<Layout['yaxis']> = {
         autorange: true,
         type: props.logScale ? 'log' : 'linear',
-        title: { text: 'MAU (명)', font: { size: 11, color: chartTheme.font } },
+        title: { text: 'MAU·신규 (명)', font: { size: 11, color: chartTheme.font } },
         gridcolor: chartTheme.grid,
         rangemode: props.logScale ? undefined : 'tozero',
         separatethousands: true,
@@ -512,24 +485,6 @@ export function YoYCompareChartsGrid(props: {
             : { tickformat: ',.0f' }),
       };
 
-      const yaxis2: Partial<Layout['yaxis']> = {
-        autorange: true,
-        type: props.logScale ? 'log' : 'linear',
-        title: { text: '신규 (명)', font: { size: 11, color: chartTheme.font } },
-        overlaying: 'y',
-        side: 'right',
-        rangemode: props.logScale ? undefined : 'tozero',
-        separatethousands: true,
-        exponentformat: 'none',
-        showexponent: 'none',
-        showgrid: false,
-        ...(props.logScale && logY2.tickvals.length
-          ? { tickmode: 'array', tickvals: logY2.tickvals, ticktext: logY2.ticktext }
-          : !props.logScale
-            ? linearY2
-            : { tickformat: ',.0f' }),
-      };
-
       const layout: Partial<Layout> = {
         uirevision: `yoy-compare-${payload.device}`,
         title: {
@@ -539,7 +494,7 @@ export function YoYCompareChartsGrid(props: {
         paper_bgcolor: chartTheme.paper,
         plot_bgcolor: chartTheme.plot,
         font: { color: chartTheme.font, family: APP_FONT_FAMILY, size: 10 },
-        margin: { t: 28, r: 72, b: 48, l: 58 },
+        margin: { t: 28, r: 28, b: 48, l: 58 },
         showlegend: false,
         xaxis: {
           type: 'category',
@@ -552,7 +507,6 @@ export function YoYCompareChartsGrid(props: {
           ticktext,
         },
         yaxis,
-        yaxis2,
         hovermode: 'closest',
       };
 
@@ -561,7 +515,7 @@ export function YoYCompareChartsGrid(props: {
         displaylogo: false,
         locale: 'ko',
         displayModeBar: true,
-        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d', 'toImage'],
         doubleClick: 'reset+autosize',
       });
 
@@ -613,10 +567,15 @@ export function YoYCompareChartsGrid(props: {
       <div className="trend-chart-toolbar trend-chart-toolbar--yoy">
         <div className="trend-series-toggles" aria-label="전년 동월 비교 — 범례 및 서비스 선택">
           <div className="yoy-legend-row">
-            <div className="yoy-metric-chips yoy-metric-chips--grouped" aria-label="선 색상 — MAU·신규 각각 당월·전년 동월">
-              {YOY_LEGEND_GROUPS.map((g) => (
-                <div key={g.groupLabel} className="yoy-metric-group">
-                  <span className="yoy-metric-group-label">{g.groupLabel}</span>
+            <div className="yoy-metric-chips yoy-metric-chips--one-row" aria-label="MAU·신규 각 당월·전년동월 선 스타일">
+              {YOY_LEGEND_GROUPS.map((g, idx) => (
+                <span key={g.groupLabel} className="yoy-metric-pair">
+                  {idx > 0 ? (
+                    <span className="yoy-metric-row-sep" aria-hidden>
+                      ·
+                    </span>
+                  ) : null}
+                  <span className="yoy-metric-pair-label">{g.groupLabel}</span>
                   {g.chips.map((it) => (
                     <span key={it.key} className="yoy-metric-chip">
                       <span
@@ -635,10 +594,9 @@ export function YoYCompareChartsGrid(props: {
                       {it.label}
                     </span>
                   ))}
-                </div>
+                </span>
               ))}
             </div>
-            <span className="yoy-legend-hint">실선 당월 · 점선 전년 동월 · 좌축 MAU · 우축 신규</span>
           </div>
           <div className="yoy-service-picker" role="radiogroup" aria-label="서비스 선택">
             {activeServices.map((svc) => {
@@ -663,9 +621,6 @@ export function YoYCompareChartsGrid(props: {
           {isFs ? '전체 화면 종료' : '전체 화면'}
         </button>
       </div>
-      <p className="yoy-range-note">
-        같은 월 축에 <strong>당월</strong>과 <strong>전년 동월</strong>을 겹쳐 봅니다. (예: 2024-03 vs 2023-03)
-      </p>
       <div className="yoy-compare-grid">
         {panelPayloads.map((p) => (
           <div key={p.device} className="yoy-chart-panel-wrap">

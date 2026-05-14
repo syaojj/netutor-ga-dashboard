@@ -75,7 +75,7 @@ export function Sidebar(props: {
   const [rawOpen, setRawOpen] = useState(false);
   return (
     <aside style={styles.aside}>
-      <div style={styles.brand}>NE Tutor GA</div>
+      <div style={styles.brand}>NE Tutor 이용 분석</div>
 
       <button
         type="button"

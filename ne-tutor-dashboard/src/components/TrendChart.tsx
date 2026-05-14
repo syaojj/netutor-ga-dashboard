@@ -794,7 +794,7 @@ export function TrendChart(props: {
           <div className="mau-trend-query-card">
             <h3 className="mau-trend-query-card__title">월별 MAU·신규사용자 추이</h3>
 
-            <p className="mau-trend-query-card__section-caption">기준선</p>
+            <p className="mau-trend-query-card__section-caption">기준 지표</p>
             <div className="mau-trend-query-row">
               <span className="mau-trend-query-row__name">NE Tutor</span>
               <div className="mau-trend-query-row__pills">
@@ -811,7 +811,7 @@ export function TrendChart(props: {
 
             <div className="mau-trend-query-card__service-head">
               <span className="mau-trend-query-card__section-caption mau-trend-query-card__section-caption--row">
-                서비스
+                서비스별 지표
               </span>
               <button
                 type="button"
@@ -842,11 +842,11 @@ export function TrendChart(props: {
               </button>
             </div>
 
-            <div className="mau-trend-matrix" role="group" aria-label="서비스별 MAU·신규">
+            <div className="mau-trend-matrix" role="group" aria-label="서비스별 지표 MAU·신규사용자">
               <div className="mau-trend-matrix__head">
                 <span className="mau-trend-matrix__corner" />
                 <span>MAU</span>
-                <span>신규</span>
+                <span>신규사용자</span>
               </div>
               {TREND_SERVICE_ROW.map((s) => {
                 const mauName = `${s.display} MAU` as TrendSeriesName;

@@ -29,14 +29,14 @@ const YOY_LEGEND_GROUPS: readonly {
   {
     groupLabel: 'MAU',
     chips: [
-      { key: 'mau-c', label: '당월', color: YOY_METRIC_COLORS.mauCurrent, dashed: false },
+      { key: 'mau-c', label: '선택월', color: YOY_METRIC_COLORS.mauCurrent, dashed: false },
       { key: 'mau-p', label: '전년동월', color: YOY_METRIC_COLORS.mauPrior, dashed: true },
     ],
   },
   {
-    groupLabel: '신규',
+    groupLabel: '신규사용자',
     chips: [
-      { key: 'new-c', label: '당월', color: YOY_METRIC_COLORS.newCurrent, dashed: false },
+      { key: 'new-c', label: '선택월', color: YOY_METRIC_COLORS.newCurrent, dashed: false },
       { key: 'new-p', label: '전년동월', color: YOY_METRIC_COLORS.newPrior, dashed: true },
     ],
   },
@@ -187,12 +187,12 @@ function YoyHoverCard({
   }
 
   const deviceLabel = tip.device === 'pc' ? 'PC' : 'Mobile';
-  const svcTitle = svc === '통합회원' ? `${svc} (신규)` : svc;
+  const svcTitle = svc === '통합회원' ? `${svc} (신규사용자)` : svc;
   const items: { title: string; monthRef: string; val: number | null; color: string }[] = [
-    { title: 'MAU 당월', monthRef: m, val: mauC, color: YOY_METRIC_COLORS.mauCurrent },
-    { title: 'MAU 전년 동월', monthRef: pm, val: mauP, color: YOY_METRIC_COLORS.mauPrior },
-    { title: '신규 당월', monthRef: m, val: newC, color: YOY_METRIC_COLORS.newCurrent },
-    { title: '신규 전년 동월', monthRef: pm, val: newP, color: YOY_METRIC_COLORS.newPrior },
+    { title: 'MAU 선택월', monthRef: m, val: mauC, color: YOY_METRIC_COLORS.mauCurrent },
+    { title: 'MAU 전년동월', monthRef: pm, val: mauP, color: YOY_METRIC_COLORS.mauPrior },
+    { title: '신규사용자 선택월', monthRef: m, val: newC, color: YOY_METRIC_COLORS.newCurrent },
+    { title: '신규사용자 전년동월', monthRef: pm, val: newP, color: YOY_METRIC_COLORS.newPrior },
   ];
 
   const rect = containerEl?.getBoundingClientRect();
@@ -344,7 +344,7 @@ export function YoYCompareChartsGrid(props: {
       traces.push({
         type: 'scatter',
         mode: 'lines+markers',
-        name: 'MAU 당월',
+        name: 'MAU 선택월',
         x: months,
         y: yMauCurr,
         yaxis: 'y',
@@ -357,7 +357,7 @@ export function YoYCompareChartsGrid(props: {
       traces.push({
         type: 'scatter',
         mode: 'lines+markers',
-        name: 'MAU 전년 동월',
+        name: 'MAU 전년동월',
         x: months,
         y: yMauPrior,
         yaxis: 'y',
@@ -370,7 +370,7 @@ export function YoYCompareChartsGrid(props: {
       traces.push({
         type: 'scatter',
         mode: 'lines+markers',
-        name: '신규 당월',
+        name: '신규사용자 선택월',
         x: months,
         y: yNewCurr,
         yaxis: 'y',
@@ -383,7 +383,7 @@ export function YoYCompareChartsGrid(props: {
       traces.push({
         type: 'scatter',
         mode: 'lines+markers',
-        name: '신규 전년 동월',
+        name: '신규사용자 전년동월',
         x: months,
         y: yNewPrior,
         yaxis: 'y',
@@ -473,7 +473,7 @@ export function YoYCompareChartsGrid(props: {
       const yaxis: Partial<Layout['yaxis']> = {
         autorange: true,
         type: props.logScale ? 'log' : 'linear',
-        title: { text: 'MAU·신규 (명)', font: { size: 11, color: chartTheme.font } },
+        title: { text: 'MAU·신규사용자 (명)', font: { size: 11, color: chartTheme.font } },
         gridcolor: chartTheme.grid,
         rangemode: props.logScale ? undefined : 'tozero',
         separatethousands: true,
@@ -556,7 +556,7 @@ export function YoYCompareChartsGrid(props: {
     };
   }, [panelPayloads, months, props.logScale, chartTheme]);
 
-  const displayLabel = (svc: string) => (svc === '통합회원' ? `${svc} (신규)` : svc);
+  const displayLabel = (svc: string) => (svc === '통합회원' ? `${svc} (신규사용자)` : svc);
 
   return (
     <div ref={shellRef} className="trend-chart-shell trend-chart-shell--flat">
@@ -568,7 +568,7 @@ export function YoYCompareChartsGrid(props: {
       <div className="trend-chart-toolbar trend-chart-toolbar--yoy">
         <div className="trend-series-toggles" aria-label="전년 동월 비교 — 범례 및 서비스 선택">
           <div className="yoy-legend-row">
-            <div className="yoy-metric-chips yoy-metric-chips--one-row" aria-label="MAU·신규 각 당월·전년동월 선 스타일">
+            <div className="yoy-metric-chips yoy-metric-chips--one-row" aria-label="MAU·신규사용자 각 선택월·전년동월 선 스타일">
               {YOY_LEGEND_GROUPS.map((g, idx) => (
                 <span key={g.groupLabel} className="yoy-metric-pair">
                   {idx > 0 ? (

@@ -9,6 +9,17 @@ const row: CSSProperties = {
 
 const label: CSSProperties = { fontSize: '0.8rem', color: 'var(--muted)' };
 
+function formatYmdHm(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 빌드 시 주입된 시각(로컬 표시). 개발 서버는 기동 시각에 가깝게 바뀔 수 있음 */
+function buildDisplayStamp(): string {
+  const raw = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : '';
+  const d = raw ? new Date(raw) : new Date();
+  return Number.isNaN(d.getTime()) ? formatYmdHm(new Date()) : formatYmdHm(d);
+}
+
 export function FiltersBar(props: {
   usedSample: boolean;
   loadError: string | null;
@@ -20,8 +31,7 @@ export function FiltersBar(props: {
   onRefresh?: () => void;
 }) {
   void props.compact;
-  const now = new Date();
-  const updated = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const updated = buildDisplayStamp();
 
   return (
     <div style={row}>
@@ -40,7 +50,9 @@ export function FiltersBar(props: {
           데이터 로드 중…
         </span>
       )}
-      <span style={label}>최종 업데이트 {updated}</span>
+      <span style={label} title="앱을 빌드한 시각입니다. 소스를 반영하려면 배포 전 `npm run build`를 다시 실행하세요.">
+        최종 업데이트 {updated}
+      </span>
       {props.usedSample && <span className="tag-warn">샘플 데이터</span>}
       {props.loadError && <span className="tag-warn">{props.loadError}</span>}
     </div>

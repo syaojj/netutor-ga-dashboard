@@ -461,6 +461,9 @@ export default function App() {
         <>
       <section id="trend" className="section section--monthly-trend-analysis">
         <h2 className="section-title">월별 이용 추이 분석</h2>
+        <p className="section-lede">
+          GA 월별 중복 제거값을 기준으로 MAU, 신규사용자, 서비스별 비중, 이벤트 전후 변화를 확인합니다.
+        </p>
         <div className="trend-subsection">
           <MonthlyTrendControls
             showPC={showPC}
@@ -548,15 +551,15 @@ export default function App() {
         <div className="trend-section-group">
           <div className="trend-group-node yoy-chart-section-node">
             <div className="trend-group-main trend-subsection-panel">
-              <TrendSubsectionTitle>선택 기간 전년 동월 추이</TrendSubsectionTitle>
+              <TrendSubsectionTitle>선택 기간 VS 전년동월 추이</TrendSubsectionTitle>
               <p className="yoy-chart-section-lede">
-                실선 당월 · 점선 전년 동월 · MAU·신규 동일 세로축(명) / 같은 월 축에 당월과 전년 동월을 겹쳐 봅니다. (예:
+                실선 선택월 · 점선 전년동월 · MAU·신규사용자 동일 세로축(명) / 같은 월 축에 선택월과 전년동월을 겹쳐 봅니다. (예:
                 2024-03 vs 2023-03)
               </p>
               <Suspense
                 fallback={
                   <div className="chart-lazy-fallback chart-lazy-fallback--trend-block" role="status">
-                    전년 동월 차트 로딩 중…
+                    전년 동월 비교 차트 로딩 중…
                   </div>
                 }
               >
@@ -573,7 +576,7 @@ export default function App() {
           <div className="yoy-impact-events-row">
             <div className="yoy-event-cards-aside trend-group-node">
               <div className="trend-group-main trend-subsection-panel">
-                <TrendSubsectionTitle>서비스별 이벤트 전후 지표</TrendSubsectionTitle>
+                <TrendSubsectionTitle>서비스 이벤트 전후 3개월 평균 비교</TrendSubsectionTitle>
                 <NeTutorEventCardsPanel
                   monthlyByDevice={monthlyByDevice}
                   events={ECOSYSTEM_EVENTS}

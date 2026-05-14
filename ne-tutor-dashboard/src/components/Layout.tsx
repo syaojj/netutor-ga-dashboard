@@ -56,7 +56,7 @@ export function Layout(props: {
         {!props.hideTopBar && (
           <header className="app-header-bar" style={styles.header}>
             <div style={styles.headerRow}>
-              <h1 style={styles.title}>NE Tutor GA 대시보드</h1>
+              <h1 style={styles.title}>NE Tutor 이용 분석 대시보드</h1>
               <div style={styles.filtersWrap}>{props.filters}</div>
             </div>
           </header>

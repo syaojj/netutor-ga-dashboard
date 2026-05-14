@@ -25,9 +25,29 @@ function fmtPct(n: number | null): string {
   return `${n.toFixed(1)}%`;
 }
 
-/** 선택 기간 월평균 — 정보 버튼 클릭 시 레이어에 표시 */
+/** 서비스 카드 — NE Tutor 월평균 대비 비중 레이어 트리거(ⓘ) */
+function SharePctInfoIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 16v-4M12 8h.01M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 선택 기간 월평균 — 정보(ⓘ) 버튼 클릭 시 레이어 */
 const MONTHLY_AVG_HELP_TOOLTIP =
-  '[NE Tutor] 구간 내 각 월 값의 산술평균이며, 선택 기간 전체의 고유 사용자 수는 아닙니다.\n\n[서비스별] 선택 기간 내 월별 MAU 평균입니다. 동일 사용자가 여러 월에 방문한 경우 각 월의 MAU에 포함됩니다.';
+  '[NE Tutor] 선택 구간에서 NE Tutor 행이 있는 월만으로 월평균을 산출합니다. 구간 전체의 고유 사용자 수와는 다릅니다.\n\n[서비스별] 각 서비스도 데이터가 있는 월만 평균에 포함됩니다. 동일 사용자가 여러 월에 포함될 수 있습니다.';
+
+const SHARE_PCT_LAYER_TITLE = 'NE Tutor 월평균 대비 비중';
+
+const SHARE_PCT_LAYER_BODY =
+  '카드에 표시된 비율(%)은 해당 서비스(또는 E-Book·부가자료)의 구간 월평균 MAU·신규사용자가 NE Tutor 월평균 대비 어느 정도인지 나타냅니다. 데이터가 존재하는 월만 평균에 포함됩니다.';
 
 /** 차트·원시와 동일한 디바이스 합산 규칙. PC+MO인데 모바일 결측(null)이면 해당 월 합계는 null */
 function mauForSelection(r: MonthlyByDeviceRow, showPC: boolean, showMobile: boolean): number | null {
@@ -57,9 +77,9 @@ function newForSelection(r: MonthlyByDeviceRow, showPC: boolean, showMobile: boo
 }
 
 function deviceHint(showPC: boolean, showMobile: boolean): string {
-  if (showPC && showMobile) return 'PC+Mobile 합산';
-  if (showPC) return 'PC만';
-  return 'Mobile만';
+  if (showPC && showMobile) return 'PC+Mobile 기준 · 데이터 존재 월 평균';
+  if (showPC) return 'PC 기준 · 데이터 존재 월 평균';
+  return 'Mobile 기준 · 데이터 존재 월 평균';
 }
 
 /** E-Book·부가자료 카드 색 — 월별 추이 차트 LAW MAU 시리즈와 동일 */
@@ -68,7 +88,7 @@ const SUP_MAU_COLOR = SERIES_STYLE['부가자료(개별) MAU'].color;
 
 /**
  * 월별 구간·PC/Mobile 선택에 따른 요약 카드.
- * NE Tutor를 비교 기준으로 서비스별 월평균과 비중(%)을 표시.
+ * NE Tutor를 비중 기준으로 서비스별 월평균과 비중(%)을 표시.
  * E-Book·부가자료(LAW)는 월간 xlsx E-Book 시트 기준 구간 월평균 MAU와 NE Tutor 월평균 MAU 대비 %를 표시합니다.
  */
 export function MonthlyTrendSummaryCards(props: {
@@ -80,26 +100,33 @@ export function MonthlyTrendSummaryCards(props: {
   showMobile: boolean;
 }) {
   const [helpOpen, setHelpOpen] = useState(false);
-  const helpRootRef = useRef<HTMLDivElement>(null);
+  const [sharePctHelpOpen, setSharePctHelpOpen] = useState(false);
+  const summaryRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!helpOpen) return;
+    if (!helpOpen && !sharePctHelpOpen) return;
     const onDocDown = (e: MouseEvent) => {
-      const el = helpRootRef.current;
-      if (el && !el.contains(e.target as Node)) setHelpOpen(false);
+      const el = summaryRootRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setHelpOpen(false);
+        setSharePctHelpOpen(false);
+      }
     };
     document.addEventListener('mousedown', onDocDown);
     return () => document.removeEventListener('mousedown', onDocDown);
-  }, [helpOpen]);
+  }, [helpOpen, sharePctHelpOpen]);
 
   useEffect(() => {
-    if (!helpOpen) return;
+    if (!helpOpen && !sharePctHelpOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setHelpOpen(false);
+      if (e.key === 'Escape') {
+        setHelpOpen(false);
+        setSharePctHelpOpen(false);
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [helpOpen]);
+  }, [helpOpen, sharePctHelpOpen]);
 
   const stats = useMemo(() => {
     const months = listMonthsBetweenInclusive(props.rangeStart, props.rangeEnd);
@@ -210,20 +237,36 @@ export function MonthlyTrendSummaryCards(props: {
   }, [props.monthlyByDevice, props.ebookMonthly, props.rangeStart, props.rangeEnd, props.showPC, props.showMobile]);
 
   return (
-    <div className="monthly-trend-summary monthly-trend-summary--flat" aria-label="선택 기간 월평균 요약">
+    <div
+      ref={summaryRootRef}
+      className="monthly-trend-summary monthly-trend-summary--flat"
+      aria-label="선택 기간 월평균 요약"
+    >
+      {sharePctHelpOpen ? (
+        <div
+          className="monthly-trend-share-pct-layer"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="share-pct-layer-title"
+        >
+          <div id="share-pct-layer-title" className="monthly-trend-share-pct-layer__title">
+            {SHARE_PCT_LAYER_TITLE}
+          </div>
+          <div className="monthly-trend-summary-help-layer__body">{SHARE_PCT_LAYER_BODY}</div>
+        </div>
+      ) : null}
       <div className="monthly-trend-summary-head-row">
         <div className="monthly-trend-summary-head-line">
           <h3 className="trend-subsection-title monthly-trend-summary-title-line">선택 기간 월평균 요약</h3>
           <span className="monthly-trend-summary-meta-inline">
-            집계 구간 {stats.monthCount}개월 · {stats.hint}
+            선택 구간 {stats.monthCount}개월 · {stats.hint}
             {stats.dataMonths === 0 ? ' · NE Tutor 행 없음' : ''}
           </span>
         </div>
       </div>
-      <div className="monthly-trend-summary-lede-block" ref={helpRootRef}>
+      <div className="monthly-trend-summary-lede-block">
         <p className="monthly-trend-summary-lede">
-          GA에서 월 단위로 중복 제거된 MAU/신규사용자를 선택 기간 개월 수로 평균한 값입니다. 선택 기간 전체 고유 사용자 수와는
-          다릅니다.{' '}
+          선택 기간 내 데이터가 존재하는 월의 GA 월별 중복 제거값을 평균한 기준이며, 선택 기간 전체 고유 사용자 수와는 다릅니다.{' '}
           <span className="monthly-trend-summary-help-anchor">
             <button
               type="button"
@@ -231,7 +274,10 @@ export function MonthlyTrendSummaryCards(props: {
               aria-expanded={helpOpen}
               aria-controls="monthly-avg-help-layer"
               aria-label="NE Tutor·서비스별 월평균 추가 안내"
-              onClick={() => setHelpOpen((v) => !v)}
+              onClick={() => {
+                setSharePctHelpOpen(false);
+                setHelpOpen((v) => !v);
+              }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
@@ -261,18 +307,17 @@ export function MonthlyTrendSummaryCards(props: {
           <div className="monthly-trend-card monthly-trend-card--primary">
             <div className="monthly-trend-card-head">
               <span className="monthly-trend-card-title-main">NE Tutor</span>
-              <span className="monthly-trend-card-badge">비교 기준</span>
             </div>
             <div className="monthly-trend-card-metrics-row">
               <div className="monthly-trend-card-metric-half">
-                <div className="monthly-trend-card-kicker">MAU</div>
+                <div className="monthly-trend-card-kicker">월평균 MAU</div>
                 <div className="monthly-trend-card-value monthly-trend-card-value--inline">
                   {stats.avgTutorMau != null ? fmtInt(stats.avgTutorMau) : '—'}
                 </div>
               </div>
               <div className="monthly-trend-card-metrics-divider" aria-hidden />
               <div className="monthly-trend-card-metric-half">
-                <div className="monthly-trend-card-kicker">신규</div>
+                <div className="monthly-trend-card-kicker">월평균 신규사용자</div>
                 <div className="monthly-trend-card-value monthly-trend-card-value--inline">
                   {stats.avgTutorNew != null ? fmtInt(stats.avgTutorNew) : '—'}
                 </div>
@@ -283,12 +328,22 @@ export function MonthlyTrendSummaryCards(props: {
         {stats.shares.map((s) => {
           const colors = svcSeriesColors(s.key);
           return (
-            <div
-              key={s.key}
-              className="monthly-trend-card monthly-trend-card--compare"
-              title="월평균과 NE Tutor 대비 비중(%)"
-            >
-              <div className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">{s.label}</div>
+            <div key={s.key} className="monthly-trend-card monthly-trend-card--compare">
+              <div className="monthly-trend-card-title-row">
+                <span className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">{s.label}</span>
+                <button
+                  type="button"
+                  className="monthly-trend-summary-info"
+                  aria-label={`${SHARE_PCT_LAYER_TITLE} 안내`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHelpOpen(false);
+                    setSharePctHelpOpen((open) => !open);
+                  }}
+                >
+                  <SharePctInfoIcon />
+                </button>
+              </div>
               <div className="monthly-trend-card-metrics-row">
                 <div className="monthly-trend-card-metric-half">
                   <div className="monthly-trend-card-kicker">MAU</div>
@@ -303,7 +358,7 @@ export function MonthlyTrendSummaryCards(props: {
                 </div>
                 <div className="monthly-trend-card-metrics-divider" aria-hidden />
                 <div className="monthly-trend-card-metric-half">
-                  <div className="monthly-trend-card-kicker">신규</div>
+                  <div className="monthly-trend-card-kicker">신규사용자</div>
                   <div className="monthly-trend-card-value-stack">
                     <span className="monthly-trend-card-value-num" style={{ color: colors.neu }}>
                       {s.avgNew != null ? fmtInt(s.avgNew) : '—'}
@@ -317,11 +372,22 @@ export function MonthlyTrendSummaryCards(props: {
             </div>
           );
         })}
-        <div
-          className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single"
-          title="월간 xlsx E-Book 시트 · 구간 월평균 · %는 NE Tutor 월평균 MAU 대비"
-        >
-          <div className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">E-Book</div>
+        <div className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single">
+          <div className="monthly-trend-card-title-row">
+            <span className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">E-Book</span>
+            <button
+              type="button"
+              className="monthly-trend-summary-info"
+              aria-label={`${SHARE_PCT_LAYER_TITLE} 안내`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHelpOpen(false);
+                setSharePctHelpOpen((open) => !open);
+              }}
+            >
+              <SharePctInfoIcon />
+            </button>
+          </div>
           <div className="monthly-trend-card-metrics-row">
             <div className="monthly-trend-card-metric-half">
               <div className="monthly-trend-card-kicker">MAU</div>
@@ -336,11 +402,22 @@ export function MonthlyTrendSummaryCards(props: {
             </div>
           </div>
         </div>
-        <div
-          className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single"
-          title="월간 xlsx E-Book 시트 부가자료 행 · %는 NE Tutor 월평균 MAU 대비"
-        >
-          <div className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">부가자료(개별다운)</div>
+        <div className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single">
+          <div className="monthly-trend-card-title-row">
+            <span className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">부가자료(개별다운)</span>
+            <button
+              type="button"
+              className="monthly-trend-summary-info"
+              aria-label={`${SHARE_PCT_LAYER_TITLE} 안내`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHelpOpen(false);
+                setSharePctHelpOpen((open) => !open);
+              }}
+            >
+              <SharePctInfoIcon />
+            </button>
+          </div>
           <div className="monthly-trend-card-metrics-row">
             <div className="monthly-trend-card-metric-half">
               <div className="monthly-trend-card-kicker">MAU</div>

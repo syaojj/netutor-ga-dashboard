@@ -703,7 +703,7 @@ export function TrendChartYearly(props: {
                   <span>전체</span>
                 </label>
               </div>
-              <div className="trend-toolbar-matrix" role="group" aria-label="서비스별 MAU·신규">
+              <div className="trend-toolbar-matrix" role="group" aria-label="서비스별 지표 MAU·신규사용자">
                 <div className="trend-service-matrix-row trend-service-matrix-row--head">
                   <span className="trend-service-matrix-cell trend-service-matrix-cell--corner" />
                   <span className="trend-service-matrix-cell trend-service-matrix-cell--h">MAU</span>

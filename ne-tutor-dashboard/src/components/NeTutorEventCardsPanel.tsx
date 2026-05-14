@@ -1,7 +1,7 @@
 /**
  * ne_tutor_event_cards_v2.html 스타일의 카드 그리드.
  * 검색 구간(월)에 기준일이 포함된 ECOSYSTEM_EVENTS만 표시하고,
- * NE Tutor 월간 통합 행으로 이벤트 전후 7개월(T-3~T+3) 추이·기준월(M) 대비 이후 3개월(M+1~M+3) 평균 증감%를 연결합니다.
+ * NE Tutor 월간 통합 행으로 이벤트 전후 7개월(T-3~T+3) 스파크·기준월(M) 대비 이후 3개월(M+1~M+3) 평균 증감%를 연결합니다.
  */
 import { useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { EcosystemEvent, MonthlyByDeviceRow } from '../types';
@@ -102,7 +102,7 @@ function buildMetricPack(
   byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
   anchorMonth: string,
 ): MetricPack | null {
-  /** 발생월(M) 단일값 대비, 발생월 이후 3개월(M+1~M+3) 산술평균의 증감% (M+3 한 달만 비교하지 않음) */
+  /** 기준월(M) 단일값 대비, 이후 3개월(M+1~M+3) 산술평균의 증감% (M+3 한 달만 비교하지 않음) */
   const m1 = addCalendarMonths(anchorMonth, 1);
   const m2 = addCalendarMonths(anchorMonth, 2);
   const m3 = addCalendarMonths(anchorMonth, 3);
@@ -162,9 +162,9 @@ function statusFrom(m: MetricPack): { cls: string; line: string; sub: string } {
   const vals = [m.pcMauMom, m.pcNewMom, m.moMauMom, m.moNewMom].filter((v) => v != null && Number.isFinite(v)) as number[];
   if (vals.length === 0) return { cls: 'event-card-status event-card-status--neut', line: '데이터 없음', sub: '' };
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-  if (avg > 3) return { cls: 'event-card-status event-card-status--up', line: '↗ 이후 3개월 평균 대비 상승', sub: 'NE Tutor 합산 지표' };
-  if (avg < -3) return { cls: 'event-card-status event-card-status--dn', line: '↘ 이후 3개월 평균 대비 하락', sub: 'NE Tutor 합산 지표' };
-  return { cls: 'event-card-status event-card-status--neut', line: '→ 혼조·유지', sub: 'NE Tutor 합산 지표' };
+  if (avg > 3) return { cls: 'event-card-status event-card-status--up', line: '↗ 후속 3개월 평균 상승', sub: 'NE Tutor 전체 기준' };
+  if (avg < -3) return { cls: 'event-card-status event-card-status--dn', line: '↘ 후속 3개월 평균 하락', sub: 'NE Tutor 전체 기준' };
+  return { cls: 'event-card-status event-card-status--neut', line: '→ 혼조·유지', sub: 'NE Tutor 전체 기준' };
 }
 
 /** YYYY-MM → '26-01 */
@@ -371,9 +371,9 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
           {(
             [
               ['PC MAU', fmtSparkInt(metrics.pcMauSeries[tip.idx])],
-              ['PC 신규', fmtSparkInt(metrics.pcNewSeries[tip.idx])],
-              ['모바일 MAU', fmtSparkInt(metrics.moMauSeries[tip.idx])],
-              ['모바일 신규', fmtSparkInt(metrics.moNewSeries[tip.idx])],
+              ['PC 신규사용자', fmtSparkInt(metrics.pcNewSeries[tip.idx])],
+              ['MOBILE MAU', fmtSparkInt(metrics.moMauSeries[tip.idx])],
+              ['MOBILE 신규사용자', fmtSparkInt(metrics.moNewSeries[tip.idx])],
             ] as const
           ).map(([k, v]) => (
             <div key={k} className="event-card-spark-tooltip-row">
@@ -417,11 +417,10 @@ export function NeTutorEventCardsPanel(props: {
   }, [byMonth, props.events, props.rangeStart, props.rangeEnd, filter]);
 
   return (
-    <div className="event-cards-panel" aria-label="서비스별 이벤트 전후 NE Tutor 지표">
+    <div className="event-cards-panel" aria-label="서비스 이벤트 전후 3개월 평균 비교 NE Tutor 지표">
       <p className="event-cards-panel-lede">
-        증감%는 <strong>발생월(M)</strong> 단일 값을 기준으로, <strong>발생월 이후 3개월(M+1~M+3)의 산술평균</strong>과 비교한
-        변화율입니다. M+3 한 달 수치만을 대비한 값이 아닙니다. PC·모바일 × MAU·신규 4지표 · 스파크라인: 전월 3개월 → 기준월 →
-        후월 3개월
+        이벤트 기준월 값을 기준으로, 이후 3개월(M+1~M+3) 평균과 비교한 증감률입니다. M+3 단일 월 비교가 아니며, PC·MOBILE ×
+        MAU·신규사용자 4개 지표를 확인합니다.
       </p>
       <div className="event-cards-filter-row" role="toolbar" aria-label="이벤트 유형 필터">
         <span className="event-cards-filter-label">필터</span>
@@ -466,32 +465,36 @@ export function NeTutorEventCardsPanel(props: {
                 </header>
                 <div className="event-card-metrics-4">
                   <div className="event-card-metric-cell">
-                    <div className="event-card-device event-card-device--pc">PC</div>
-                    <div className="event-card-kind">MAU 이후 3개월 평균 대비</div>
+                    <div className="event-card-device event-card-device--pc event-card-device--heading">PC MAU</div>
+                    <div className="event-card-kind-sub">기준월 대비 이후 3개월 평균</div>
                     <div className={valCls(metrics.pcMauMom)}>
                       {arrowFor(metrics.pcMauMom)}
                       {fmtMom(metrics.pcMauMom)}
                     </div>
                   </div>
                   <div className="event-card-metric-cell">
-                    <div className="event-card-device event-card-device--pc">PC</div>
-                    <div className="event-card-kind">신규 이후 3개월 평균 대비</div>
+                    <div className="event-card-device event-card-device--pc event-card-device--heading">
+                      PC 신규사용자
+                    </div>
+                    <div className="event-card-kind-sub">기준월 대비 이후 3개월 평균</div>
                     <div className={valCls(metrics.pcNewMom)}>
                       {arrowFor(metrics.pcNewMom)}
                       {fmtMom(metrics.pcNewMom)}
                     </div>
                   </div>
                   <div className="event-card-metric-cell">
-                    <div className="event-card-device event-card-device--mo">모바일</div>
-                    <div className="event-card-kind">MAU 이후 3개월 평균 대비</div>
+                    <div className="event-card-device event-card-device--mo event-card-device--heading">MOBILE MAU</div>
+                    <div className="event-card-kind-sub">기준월 대비 이후 3개월 평균</div>
                     <div className={valCls(metrics.moMauMom)}>
                       {arrowFor(metrics.moMauMom)}
                       {fmtMom(metrics.moMauMom)}
                     </div>
                   </div>
                   <div className="event-card-metric-cell">
-                    <div className="event-card-device event-card-device--mo">모바일</div>
-                    <div className="event-card-kind">신규 이후 3개월 평균 대비</div>
+                    <div className="event-card-device event-card-device--mo event-card-device--heading">
+                      MOBILE 신규사용자
+                    </div>
+                    <div className="event-card-kind-sub">기준월 대비 이후 3개월 평균</div>
                     <div className={valCls(metrics.moNewMom)}>
                       {arrowFor(metrics.moNewMom)}
                       {fmtMom(metrics.moNewMom)}
@@ -512,22 +515,24 @@ export function NeTutorEventCardsPanel(props: {
                         className="event-card-leg-line event-card-leg-line--dash"
                         style={{ borderColor: EVENT_CARD_PC_LINE }}
                       />{' '}
-                      PC 신규
+                      PC 신규사용자
                     </span>
                     <span>
-                      <i className="event-card-leg-line" style={{ background: EVENT_CARD_MO_LINE }} /> 모바일 MAU
+                      <i className="event-card-leg-line" style={{ background: EVENT_CARD_MO_LINE }} /> MOBILE MAU
                     </span>
                     <span>
                       <i
                         className="event-card-leg-line event-card-leg-line--dash"
                         style={{ borderColor: EVENT_CARD_MO_LINE }}
                       />{' '}
-                      모바일 신규
+                      MOBILE 신규사용자
                     </span>
                   </div>
                   <EventWindowSpark color={EVENT_CARD_PC_LINE} colorMo={EVENT_CARD_MO_LINE} metrics={metrics} />
                 </div>
-                {metrics.moAllNull ? <p className="event-card-note">* 해당 구간 모바일 NE Tutor 행이 없거나 전부 결측입니다.</p> : null}
+                {metrics.moAllNull ? (
+                  <p className="event-card-note">* 해당 구간 MOBILE NE Tutor 행이 없거나 전부 결측입니다.</p>
+                ) : null}
               </article>
             );
           })}

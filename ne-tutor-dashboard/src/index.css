@@ -190,6 +190,14 @@ input[type='date'] {
   line-height: 1.5;
 }
 
+.section-lede {
+  margin: -2px 0 14px;
+  max-width: 56rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
 .section--monthly-trend-analysis .section-title,
 .section--yoy-analysis .section-title {
   margin-bottom: 12px;
@@ -278,6 +286,7 @@ input[type='date'] {
 }
 
 .monthly-trend-summary--flat {
+  position: relative;
   background: transparent;
   border: none;
   padding: 0;
@@ -714,16 +723,44 @@ table.data th {
   letter-spacing: -0.01em;
 }
 
-.monthly-trend-card-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  font-size: 0.62rem;
+.monthly-trend-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 8px;
+  margin-bottom: 4px;
+  width: 100%;
+}
+
+.monthly-trend-card-title-row .monthly-trend-card-title-main--svc {
+  margin-bottom: 0;
+}
+
+.monthly-trend-card-title-row .monthly-trend-summary-info {
+  flex-shrink: 0;
+}
+
+.monthly-trend-share-pct-layer {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 25;
+  max-width: min(340px, calc(100% - 0.75rem));
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
+.monthly-trend-share-pct-layer__title {
   font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #1d4ed8;
-  border-radius: 999px;
-  border: 1px solid rgba(37, 99, 235, 0.35);
-  background: rgba(59, 130, 246, 0.12);
+  font-size: 0.82rem;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
 }
 
 .monthly-trend-card-metrics-row {
@@ -2235,10 +2272,21 @@ table.data.impact-summary-table .impact-pct-cell {
   color: #c4b5fd;
 }
 
-.event-card-kind {
-  font-size: 0.62rem;
+/** PC·MOBILE 지표명 — 부제(기준월 대비…)와 동일 폰트 크기, 색만 PC/MO 구분 */
+.event-card-device--heading {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  margin-bottom: 3px;
+  line-height: 1.35;
+}
+
+.event-card-kind-sub {
+  font-size: 0.6rem;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  line-height: 1.35;
 }
 
 .event-card-val {

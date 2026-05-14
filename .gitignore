@@ -1,5 +1,7 @@
 # Local full-tree backups (robocopy snapshots; keep out of git)
 backup/
+# git archive / manual zip snapshots
+backups/
 
 # Dependencies & build
 ne-tutor-dashboard/node_modules/

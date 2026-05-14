@@ -119,18 +119,19 @@ const TOGGLE_SERVICES: readonly string[] = [
 
 type DeviceSide = 'pc' | 'mo';
 
+/**
+ * YoY 패널은 PC·Mobile 각각 단일 축이므로 `monthlyTrend.newForDevice`와 동일하게
+ * PC는 `pcNew`, Mobile은 `moNew`만 사용한다.
+ * (구버전: 통합회원 PC에 교강사까지 합산하려다 `teacherNew` 결측 시 전부 null이 되어 선이 안 그려짐)
+ */
 function readMauNew(
   row: MonthlyByDeviceRow | undefined,
   device: DeviceSide,
-  svc: string,
+  _svc: string,
 ): { mau: number | null; neu: number | null } {
   if (!row) return { mau: null, neu: null };
   const mau = device === 'pc' ? row.pcMau : row.moMau;
-  let neu: number | null = device === 'pc' ? row.pcNew : row.moNew;
-  if (device === 'pc' && svc === '통합회원') {
-    if (row.pcNew == null || row.teacherNew == null) neu = null;
-    else neu = row.pcNew + row.teacherNew;
-  }
+  const neu: number | null = device === 'pc' ? row.pcNew : row.moNew;
   return { mau, neu };
 }
 

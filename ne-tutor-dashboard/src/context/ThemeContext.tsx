@@ -24,9 +24,12 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function readStoredMode(): ColorMode {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v === 'light') return 'light';
+    if (v === 'dark') return 'dark';
+    return 'dark';
   } catch {
-    return 'light';
+    return 'dark';
   }
 }
 

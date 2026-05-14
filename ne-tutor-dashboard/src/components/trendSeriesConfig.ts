@@ -22,6 +22,10 @@ export const TREND_SERIES_NAMES = [
   '어휘출제 신규사용자',
   '클래스카드 MAU',
   '클래스카드 신규사용자',
+  /** 월간 xlsx E-Book 시트 — 이용자수(중복제거) */
+  'E-Book MAU',
+  /** 월간 xlsx — 부가자료 개별 다운로드(중복제거) */
+  '부가자료(개별) MAU',
 ] as const;
 
 export type TrendSeriesName = (typeof TREND_SERIES_NAMES)[number];
@@ -59,7 +63,20 @@ export const SERIES_STYLE: Record<TrendSeriesName, { color: string; dash: 'solid
   '어휘출제 신규사용자': { color: '#6ee7b7', dash: 'dot' },
   '클래스카드 MAU': { color: '#a78bfa', dash: 'solid' },
   '클래스카드 신규사용자': { color: '#c4b5fd', dash: 'dot' },
+  'E-Book MAU': { color: '#38bdf8', dash: 'solid' },
+  '부가자료(개별) MAU': { color: '#f472b6', dash: 'dot' },
 };
+
+/** 월별 추이 기본: 통합회원·서비스별 신규 시리즈는 끔, 나머지 켬 */
+export function initialTrendSeriesVisibility(): Record<TrendSeriesName, boolean> {
+  const v = Object.fromEntries(TREND_SERIES_NAMES.map((n) => [n, true])) as Record<TrendSeriesName, boolean>;
+  v['통합회원'] = false;
+  for (const s of TREND_SERVICE_ROW) {
+    const key = `${s.display} 신규사용자` as TrendSeriesName;
+    v[key] = false;
+  }
+  return v;
+}
 
 /**
  * 차트 시리즈·trace 순서(맨 뒤 → 맨 앞, 앞쪽이 먼저 그려져 뒤에 깔림):
@@ -77,6 +94,8 @@ export function orderTrendSeriesForPlot<
       `${s.display} MAU` as TrendSeriesName,
       `${s.display} 신규사용자` as TrendSeriesName,
     ]),
+    'E-Book MAU',
+    '부가자료(개별) MAU',
   ];
   return orderedNames.map((n) => byName.get(n)).filter((s): s is T => s != null);
 }

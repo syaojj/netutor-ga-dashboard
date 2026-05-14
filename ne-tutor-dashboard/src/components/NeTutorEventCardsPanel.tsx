@@ -3,7 +3,7 @@
  * 검색 구간(월)에 기준일이 포함된 ECOSYSTEM_EVENTS만 표시하고,
  * NE Tutor 월간 통합 행으로 이벤트 전후 7개월(T-3~T+3) 추이·전월 대비 증감%를 연결합니다.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { EcosystemEvent, MonthlyByDeviceRow } from '../types';
 import { addCalendarMonths, toMonthKey } from '../utils/dateUtil';
 
@@ -155,34 +155,66 @@ function statusFrom(m: MetricPack): { cls: string; line: string; sub: string } {
   return { cls: 'event-card-status event-card-status--neut', line: '→ 혼조·유지', sub: 'NE Tutor 합산 지표' };
 }
 
-function SparkLines({ color, colorMo, metrics }: { color: string; colorMo: string; metrics: MetricPack }) {
-  const W = 240;
-  const H = 56;
-  const pad = 6;
-  const n = metrics.pcMauSeries.length;
-  const xs = metrics.pcMauSeries.map((_, i) => pad + (i / Math.max(1, n - 1)) * (W - pad * 2));
+const SPARK_X_LABELS = ['T-3', 'T-2', 'T-1', '이벤트', 'T+1', 'T+2', 'T+3'] as const;
 
-  const allVals: number[] = [];
-  for (const arr of [metrics.pcMauSeries, metrics.pcNewSeries, metrics.moMauSeries, metrics.moNewSeries]) {
-    for (const v of arr) {
-      if (v != null && Number.isFinite(v) && v > 0) allVals.push(v);
+function fmtSparkInt(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return new Intl.NumberFormat('ko-KR').format(Math.round(n));
+}
+
+function fmtSparkAxis(n: number): string {
+  if (n >= 10_000) return `${(n / 10_000).toFixed(1)}만`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}천`;
+  return String(Math.round(n));
+}
+
+function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo: string; metrics: MetricPack }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<{
+    idx: number;
+    left: number;
+    top: number;
+  } | null>(null);
+
+  const vbW = 300;
+  const vbH = 96;
+  const padL = 42;
+  const padR = 6;
+  const padB = 22;
+  const padT = 6;
+  const plotW = vbW - padL - padR;
+  const plotH = vbH - padT - padB;
+
+  const n = metrics.pcMauSeries.length;
+  const xs = metrics.pcMauSeries.map((_, i) => padL + (i / Math.max(1, n - 1)) * plotW);
+
+  const { lo, hi, yTicks } = useMemo(() => {
+    const allVals: number[] = [];
+    for (const arr of [metrics.pcMauSeries, metrics.pcNewSeries, metrics.moMauSeries, metrics.moNewSeries]) {
+      for (const v of arr) {
+        if (v != null && Number.isFinite(v) && v > 0) allVals.push(v);
+      }
     }
-  }
-  let min = allVals.length ? Math.min(...allVals) : 0;
-  let max = allVals.length ? Math.max(...allVals) : 1;
-  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
-    min = 0;
-    max = max > 0 ? max : 1;
-  }
-  const span = max - min || 1;
-  const lo = min - span * 0.06;
-  const hi = max + span * 0.06;
+    let min = allVals.length ? Math.min(...allVals) : 0;
+    let max = allVals.length ? Math.max(...allVals) : 1;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
+      min = 0;
+      max = max > 0 ? max : 1;
+    }
+    const span = max - min || 1;
+    const lo = min - span * 0.06;
+    const hi = max + span * 0.06;
+    const yTicks = [hi, (hi + lo) / 2, lo];
+    return { lo, hi, yTicks };
+  }, [metrics.pcMauSeries, metrics.pcNewSeries, metrics.moMauSeries, metrics.moNewSeries]);
 
   const yAt = (v: number | null) => {
     if (v == null || !Number.isFinite(v) || v <= 0) return null;
-    const t = (v - lo) / (hi - lo);
-    return H - pad - t * (H - pad * 2);
+    const t = (v - lo) / (hi - lo || 1);
+    return padT + (1 - t) * plotH;
   };
+
+  const yScale = (tv: number) => padT + (1 - (tv - lo) / (hi - lo || 1)) * plotH;
 
   const pathD = (vals: (number | null)[]) => {
     let d = '';
@@ -200,33 +232,125 @@ function SparkLines({ color, colorMo, metrics }: { color: string; colorMo: strin
   const d3 = pathD(metrics.moMauSeries);
   const d4 = pathD(metrics.moNewSeries);
 
+  const onLeave = () => setTip(null);
+  const onMove = (i: number, e: MouseEvent) => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setTip({
+      idx: i,
+      left: e.clientX - r.left,
+      top: e.clientY - r.top,
+    });
+  };
+
+  const band = plotW / Math.max(1, n);
+
   return (
-    <svg className="event-card-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
-      {d1 ? <path d={d1} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" /> : null}
-      {d2 ? (
-        <path
-          d={d2}
-          fill="none"
-          stroke={color}
-          strokeWidth={1.4}
-          strokeDasharray="5 4"
-          opacity={0.75}
-          vectorEffect="non-scaling-stroke"
-        />
-      ) : null}
-      {d3 ? <path d={d3} fill="none" stroke={colorMo} strokeWidth={2} vectorEffect="non-scaling-stroke" /> : null}
-      {d4 ? (
-        <path
-          d={d4}
-          fill="none"
-          stroke={colorMo}
-          strokeWidth={1.4}
-          strokeDasharray="5 4"
-          opacity={0.75}
-          vectorEffect="non-scaling-stroke"
-        />
-      ) : null}
-    </svg>
+    <div ref={wrapRef} className="event-card-spark-wrap" onMouseLeave={onLeave}>
+      <svg
+        className="event-card-spark"
+        viewBox={`0 0 ${vbW} ${vbH}`}
+        preserveAspectRatio="xMidYMid meet"
+        aria-hidden
+      >
+        {yTicks.map((tv, j) => {
+          const yy = yScale(tv);
+          return (
+            <g key={`yt-${j}`}>
+              <line
+                x1={padL}
+                x2={vbW - padR}
+                y1={yy}
+                y2={yy}
+                stroke="currentColor"
+                strokeOpacity={0.12}
+                vectorEffect="non-scaling-stroke"
+              />
+              <text x={4} y={yy + 3} fill="currentColor" fillOpacity={0.55} fontSize="9">
+                {fmtSparkAxis(tv)}
+              </text>
+            </g>
+          );
+        })}
+        {SPARK_X_LABELS.map((lab, i) => {
+          const x = xs[i];
+          return (
+            <text
+              key={lab}
+              x={x}
+              y={vbH - 4}
+              textAnchor="middle"
+              fill="currentColor"
+              fillOpacity={0.65}
+              fontSize="9"
+            >
+              {lab}
+            </text>
+          );
+        })}
+        {d1 ? <path d={d1} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" /> : null}
+        {d2 ? (
+          <path
+            d={d2}
+            fill="none"
+            stroke={color}
+            strokeWidth={1.4}
+            strokeDasharray="5 4"
+            opacity={0.75}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+        {d3 ? <path d={d3} fill="none" stroke={colorMo} strokeWidth={2} vectorEffect="non-scaling-stroke" /> : null}
+        {d4 ? (
+          <path
+            d={d4}
+            fill="none"
+            stroke={colorMo}
+            strokeWidth={1.4}
+            strokeDasharray="5 4"
+            opacity={0.75}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+        {xs.map((x, i) => (
+          <rect
+            key={`hit-${i}`}
+            x={x - Math.max(band, 14) / 2}
+            y={padT}
+            width={Math.max(band, 14)}
+            height={plotH}
+            fill="transparent"
+            onMouseEnter={(e) => onMove(i, e)}
+            onMouseMove={(e) => onMove(i, e)}
+          />
+        ))}
+      </svg>
+      {tip && (
+        <div
+          className="event-card-spark-tooltip"
+          style={{
+            left: Math.min(tip.left + 10, (wrapRef.current?.clientWidth ?? 300) - 172),
+            top: Math.max(4, tip.top - 108),
+          }}
+        >
+          <div className="event-card-spark-tooltip-title">{SPARK_X_LABELS[tip.idx]}</div>
+          {(
+            [
+              ['PC MAU', fmtSparkInt(metrics.pcMauSeries[tip.idx])],
+              ['PC 신규', fmtSparkInt(metrics.pcNewSeries[tip.idx])],
+              ['모바일 MAU', fmtSparkInt(metrics.moMauSeries[tip.idx])],
+              ['모바일 신규', fmtSparkInt(metrics.moNewSeries[tip.idx])],
+            ] as const
+          ).map(([k, v]) => (
+            <div key={k} className="event-card-spark-tooltip-row">
+              <span>{k}</span>
+              <span>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -309,7 +433,7 @@ export function NeTutorEventCardsPanel(props: {
                 <div className="event-card-metrics-4">
                   <div className="event-card-metric-cell">
                     <div className="event-card-device event-card-device--pc">PC</div>
-                    <div className="event-card-kind">MAU 전월比</div>
+                    <div className="event-card-kind">MAU 전월 대비</div>
                     <div className={valCls(metrics.pcMauMom)}>
                       {arrowFor(metrics.pcMauMom)}
                       {fmtMom(metrics.pcMauMom)}
@@ -317,23 +441,23 @@ export function NeTutorEventCardsPanel(props: {
                   </div>
                   <div className="event-card-metric-cell">
                     <div className="event-card-device event-card-device--pc">PC</div>
-                    <div className="event-card-kind">신규 전월比</div>
+                    <div className="event-card-kind">신규 전월 대비</div>
                     <div className={valCls(metrics.pcNewMom)}>
                       {arrowFor(metrics.pcNewMom)}
                       {fmtMom(metrics.pcNewMom)}
                     </div>
                   </div>
                   <div className="event-card-metric-cell">
-                    <div className="event-card-device event-card-device--mo">Mobile</div>
-                    <div className="event-card-kind">MAU 전월比</div>
+                    <div className="event-card-device event-card-device--mo">모바일</div>
+                    <div className="event-card-kind">MAU 전월 대비</div>
                     <div className={valCls(metrics.moMauMom)}>
                       {arrowFor(metrics.moMauMom)}
                       {fmtMom(metrics.moMauMom)}
                     </div>
                   </div>
                   <div className="event-card-metric-cell">
-                    <div className="event-card-device event-card-device--mo">Mobile</div>
-                    <div className="event-card-kind">신규 전월比</div>
+                    <div className="event-card-device event-card-device--mo">모바일</div>
+                    <div className="event-card-kind">신규 전월 대비</div>
                     <div className={valCls(metrics.moNewMom)}>
                       {arrowFor(metrics.moNewMom)}
                       {fmtMom(metrics.moNewMom)}
@@ -354,19 +478,19 @@ export function NeTutorEventCardsPanel(props: {
                       신규
                     </span>
                     <span>
-                      <i className="event-card-leg-line" style={{ background: '#a78bfa' }} /> Mo MAU
+                      <i className="event-card-leg-line" style={{ background: '#a78bfa' }} /> 모바일 MAU
                     </span>
                     <span>
                       <i
                         className="event-card-leg-line event-card-leg-line--dash"
                         style={{ borderColor: '#a78bfa' }}
                       />{' '}
-                      Mo 신규
+                      모바일 신규
                     </span>
                   </div>
-                  <SparkLines color={ac} colorMo="#a78bfa" metrics={metrics} />
+                  <EventWindowSpark color={ac} colorMo="#a78bfa" metrics={metrics} />
                 </div>
-                {metrics.moAllNull ? <p className="event-card-note">* 해당 구간 Mobile NE Tutor 행이 없거나 전부 결측입니다.</p> : null}
+                {metrics.moAllNull ? <p className="event-card-note">* 해당 구간 모바일 NE Tutor 행이 없거나 전부 결측입니다.</p> : null}
               </article>
             );
           })}

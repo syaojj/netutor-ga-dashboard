@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout, Shape } from 'plotly.js';
-import type { EcosystemEvent, MonthlyByDeviceRow, MonthlyMetricRow } from '../types';
+import type { EbookMonthlyRow, EcosystemEvent, MonthlyByDeviceRow, MonthlyMetricRow } from '../types';
 import { assignEventAnnotationLanes, splitEventNameToTwoLines } from '../utils/trendEventLayout';
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
 import {
   AREA_FILL_NAMES,
   BAR_NAMES,
+  initialTrendSeriesVisibility,
   orderTrendSeriesForPlot,
   SERIES_STYLE,
   TREND_PRIMARY_NAMES,
@@ -45,6 +46,8 @@ interface HoverServiceData {
   showMauTooltip: boolean;
   /** 범례 체크된 신규(또는 통합회원) 시리즈만 툴팁 신규 행 표시 */
   showNewTooltip: boolean;
+  /** PC/MO 분해 없는 월간 LAW 단일 MAU(E-Book·부가자료) */
+  aggregateMau?: number | null;
 }
 
 interface HoverState {
@@ -158,13 +161,12 @@ function buildLinearYAxisTicks(ymin: number, ymax: number): Partial<Layout['yaxi
   };
 }
 
-const initialVisible = (): Record<string, boolean> =>
-  Object.fromEntries(TREND_SERIES_NAMES.map((n) => [n, true]));
-
 export function TrendChart(props: {
   monthly: MonthlyMetricRow[];
   /** 월별 PC/MO 원시 행 — 호버 툴팁의 PC/MO 분해값 표시에 사용 */
   monthlyByDevice: readonly MonthlyByDeviceRow[];
+  /** 월간 xlsx E-Book·부가자료 LAW 행 — E-Book MAU·부가자료(개별) MAU 시리즈 */
+  ebookMonthly: readonly EbookMonthlyRow[];
   rangeStart: string;
   rangeEnd: string;
   /** 검색 영역 PC/Mobile 선택 — 툴팁에 표시할 항목만 반영 */
@@ -177,7 +179,7 @@ export function TrendChart(props: {
   const { chartTheme } = useTheme();
   const shellRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState<Record<string, boolean>>(initialVisible);
+  const [visible, setVisible] = useState<Record<string, boolean>>(() => initialTrendSeriesVisibility());
   const [isFs, setIsFs] = useState(false);
   const [hover, setHover] = useState<HoverState | null>(null);
 
@@ -194,6 +196,12 @@ export function TrendChart(props: {
     const mauY = (svc: string) => months.map((mo) => by.get(svc)?.get(mo)?.mauEstimate ?? null);
     const newY = (svc: string) => months.map((mo) => by.get(svc)?.get(mo)?.newUsersSum ?? null);
 
+    const ebookByMonth = new Map(props.ebookMonthly.map((r) => [r.monthKey, r]));
+    const ebookMauY = () =>
+      months.map((mo) => ebookByMonth.get(mo)?.lawEbookUniqueUsers ?? null);
+    const supIndMauY = () =>
+      months.map((mo) => ebookByMonth.get(mo)?.lawSupplementaryIndividualDownloads ?? null);
+
     const series: { name: TrendSeriesName; y: (number | null)[] }[] = [
       { name: 'NE Tutor MAU', y: mauY('NE Tutor') },
       { name: 'NE Tutor 신규사용자', y: newY('NE Tutor') },
@@ -202,10 +210,12 @@ export function TrendChart(props: {
         { name: `${s.display} MAU` as TrendSeriesName, y: mauY(s.dataService) },
         { name: `${s.display} 신규사용자` as TrendSeriesName, y: newY(s.dataService) },
       ]),
+      { name: 'E-Book MAU', y: ebookMauY() },
+      { name: '부가자료(개별) MAU', y: supIndMauY() },
     ];
 
     return { months, series, markerSize };
-  }, [props.monthly, props.rangeStart, props.rangeEnd]);
+  }, [props.monthly, props.ebookMonthly, props.rangeStart, props.rangeEnd]);
 
   /**
    * 이벤트 말풍선의 레인 수 사전 계산. layout 의 top margin 과 차트 div 높이를 모두 결정한다.
@@ -578,11 +588,11 @@ export function TrendChart(props: {
       if (!point) return;
       const xv = String(point.x);
       const monthMap = pcMoLookup.get(xv);
-      if (!monthMap) return;
 
       const isOn = (name: TrendSeriesName) => visible[name] !== false;
 
       const makeNeTutorBlock = (): HoverServiceData | null => {
+        if (!monthMap) return null;
         const r = monthMap.get('NE Tutor');
         if (!r) return null;
         const showMau = isOn('NE Tutor MAU');
@@ -604,6 +614,7 @@ export function TrendChart(props: {
       };
 
       const makeMemberBlock = (): HoverServiceData | null => {
+        if (!monthMap) return null;
         const r = monthMap.get('통합회원');
         if (!r || !isOn('통합회원')) return null;
         return {
@@ -622,6 +633,7 @@ export function TrendChart(props: {
       };
 
       const makeSecondaryBlock = (svc: string, display: string): HoverServiceData | null => {
+        if (!monthMap) return null;
         const r = monthMap.get(svc);
         if (!r) return null;
         const mauName = `${display} MAU` as TrendSeriesName;
@@ -650,9 +662,47 @@ export function TrendChart(props: {
       const memberBlock = makeMemberBlock();
       if (memberBlock) primary.push(memberBlock);
 
-      const secondary = TREND_SERVICE_ROW.map((s) => makeSecondaryBlock(s.dataService, s.display)).filter(
+      const secondaryBase = TREND_SERVICE_ROW.map((s) => makeSecondaryBlock(s.dataService, s.display)).filter(
         (b): b is HoverServiceData => b != null,
       );
+
+      const ebookByMonth = new Map(props.ebookMonthly.map((r) => [r.monthKey, r]));
+      const lawRow = ebookByMonth.get(xv);
+      const lawBlocks: HoverServiceData[] = [];
+      if (lawRow && isOn('E-Book MAU') && lawRow.lawEbookUniqueUsers != null) {
+        lawBlocks.push({
+          name: 'E-Book MAU',
+          color: SERIES_STYLE['E-Book MAU'].color,
+          pcMau: null,
+          moMau: null,
+          pcNew: null,
+          moNew: null,
+          hasMau: true,
+          newOnly: false,
+          showMauTooltip: true,
+          showNewTooltip: false,
+          aggregateMau: lawRow.lawEbookUniqueUsers,
+        });
+      }
+      if (lawRow && isOn('부가자료(개별) MAU') && lawRow.lawSupplementaryIndividualDownloads != null) {
+        lawBlocks.push({
+          name: '부가자료(개별) MAU',
+          color: SERIES_STYLE['부가자료(개별) MAU'].color,
+          pcMau: null,
+          moMau: null,
+          pcNew: null,
+          moNew: null,
+          hasMau: true,
+          newOnly: false,
+          showMauTooltip: true,
+          showNewTooltip: false,
+          aggregateMau: lawRow.lawSupplementaryIndividualDownloads,
+        });
+      }
+
+      const secondary = [...secondaryBase, ...lawBlocks];
+
+      if (primary.length === 0 && secondary.length === 0) return;
 
       const shell = shellRef.current;
       if (!shell) return;
@@ -686,6 +736,7 @@ export function TrendChart(props: {
     props.showPC,
     props.showMobile,
     chartTheme,
+    props.ebookMonthly,
   ]);
 
   void props.services;
@@ -729,6 +780,20 @@ export function TrendChart(props: {
                 })}
               </div>
             ))}
+            <div className="trend-service-row">
+              <span className="trend-service-row-label">LAW</span>
+              {(['E-Book MAU', '부가자료(개별) MAU'] as const).map((name) => {
+                const st = SERIES_STYLE[name];
+                const on = visible[name] !== false;
+                return (
+                  <label key={name} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
+                    <input type="checkbox" checked={on} onChange={() => toggleSeries(name)} />
+                    <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
+                    <span>{name}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         </div>
         <button type="button" className="btn trend-fs-btn" onClick={toggleFullscreen} title="Plotly 툴바의 확대 아이콘은 축 자동 맞춤입니다. 여기서 차트 영역 전체화면을 켜고 끕니다.">
@@ -857,7 +922,13 @@ function HoverBlock({
         <span className="trend-hover-swatch" style={{ background: block.color }} />
         <span>{block.name}</span>
       </div>
-      {block.hasMau && block.showMauTooltip && (
+      {block.showMauTooltip && block.aggregateMau != null && (
+        <div className="trend-hover-row">
+          <span className="trend-hover-label">MAU</span>
+          <span className="trend-hover-value">{fmtIntKo(block.aggregateMau)}명</span>
+        </div>
+      )}
+      {block.hasMau && block.showMauTooltip && block.aggregateMau == null && (
         <div className="trend-hover-row">
           <span className="trend-hover-label">MAU</span>
           <span className="trend-hover-value">{mauLine()}</span>

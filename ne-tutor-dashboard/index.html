@@ -4,9 +4,11 @@
     <script>
       (function () {
         try {
-          if (localStorage.getItem('ne-tutor-color-mode') === 'dark')
-            document.documentElement.dataset.colorMode = 'dark';
-        } catch (e) {}
+          var v = localStorage.getItem('ne-tutor-color-mode');
+          document.documentElement.dataset.colorMode = v === 'light' ? 'light' : 'dark';
+        } catch (e) {
+          document.documentElement.dataset.colorMode = 'dark';
+        }
       })();
     </script>
     <meta charset="UTF-8" />

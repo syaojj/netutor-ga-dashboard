@@ -10,19 +10,36 @@ import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
 import { TREND_SERVICE_ROW } from './trendSeriesConfig';
 
-/** 전년 동월 비교: 서비스와 무관하게 4개 시리즈 색 고정 (MAU/신규 × 당월/전년) */
+/**
+ * 전년 동월 비교: 지표별 유사 색상군.
+ * - MAU: 블루 계열(당월 진하게 · 전년 동월 밝게) — 같은 지표끼리 비교 용이
+ * - 신규: 앰버·오렌지 계열(당월 진하게 · 전년 동월 밝게)
+ */
 const YOY_METRIC_COLORS = {
-  mauCurrent: '#3b82f6',
-  mauPrior: '#22d3ee',
-  newCurrent: '#fb923c',
-  newPrior: '#c084fc',
+  mauCurrent: '#1d4ed8',
+  mauPrior: '#7dd3fc',
+  newCurrent: '#c2410c',
+  newPrior: '#fbbf24',
 } as const;
 
-const YOY_LEGEND_CHIPS = [
-  { key: 'mau-c', label: 'MAU 당월', color: YOY_METRIC_COLORS.mauCurrent },
-  { key: 'mau-p', label: 'MAU 전년 동월', color: YOY_METRIC_COLORS.mauPrior },
-  { key: 'new-c', label: '신규 당월', color: YOY_METRIC_COLORS.newCurrent },
-  { key: 'new-p', label: '신규 전년 동월', color: YOY_METRIC_COLORS.newPrior },
+const YOY_LEGEND_GROUPS: readonly {
+  groupLabel: string;
+  chips: readonly { key: string; label: string; color: string; dashed: boolean }[];
+}[] = [
+  {
+    groupLabel: 'MAU',
+    chips: [
+      { key: 'mau-c', label: '당월', color: YOY_METRIC_COLORS.mauCurrent, dashed: false },
+      { key: 'mau-p', label: '전년 동월', color: YOY_METRIC_COLORS.mauPrior, dashed: true },
+    ],
+  },
+  {
+    groupLabel: '신규',
+    chips: [
+      { key: 'new-c', label: '당월', color: YOY_METRIC_COLORS.newCurrent, dashed: false },
+      { key: 'new-p', label: '전년 동월', color: YOY_METRIC_COLORS.newPrior, dashed: true },
+    ],
+  },
 ] as const;
 
 function monthsInRange(rangeStart: string, rangeEnd: string): string[] {
@@ -171,10 +188,10 @@ function YoyHoverCard({
   const deviceLabel = tip.device === 'pc' ? 'PC' : 'Mobile';
   const svcTitle = svc === '통합회원' ? `${svc} (신규)` : svc;
   const items: { title: string; monthRef: string; val: number | null; color: string }[] = [
-    { title: 'MAU · 당월', monthRef: m, val: mauC, color: YOY_METRIC_COLORS.mauCurrent },
-    { title: 'MAU · 전년 동월', monthRef: pm, val: mauP, color: YOY_METRIC_COLORS.mauPrior },
-    { title: '신규 · 당월', monthRef: m, val: newC, color: YOY_METRIC_COLORS.newCurrent },
-    { title: '신규 · 전년 동월', monthRef: pm, val: newP, color: YOY_METRIC_COLORS.newPrior },
+    { title: 'MAU 당월', monthRef: m, val: mauC, color: YOY_METRIC_COLORS.mauCurrent },
+    { title: 'MAU 전년 동월', monthRef: pm, val: mauP, color: YOY_METRIC_COLORS.mauPrior },
+    { title: '신규 당월', monthRef: m, val: newC, color: YOY_METRIC_COLORS.newCurrent },
+    { title: '신규 전년 동월', monthRef: pm, val: newP, color: YOY_METRIC_COLORS.newPrior },
   ];
 
   const rect = containerEl?.getBoundingClientRect();
@@ -592,12 +609,29 @@ export function YoYCompareChartsGrid(props: {
       <div className="trend-chart-toolbar trend-chart-toolbar--yoy">
         <div className="trend-series-toggles" aria-label="전년 동월 비교 — 범례 및 서비스 선택">
           <div className="yoy-legend-row">
-            <div className="yoy-metric-chips" aria-label="선 색상(지표별 고정)">
-              {YOY_LEGEND_CHIPS.map((it) => (
-                <span key={it.key} className="yoy-metric-chip">
-                  <span className="yoy-metric-chip-swatch" style={{ background: it.color }} />
-                  {it.label}
-                </span>
+            <div className="yoy-metric-chips yoy-metric-chips--grouped" aria-label="선 색상 — MAU·신규 각각 당월·전년 동월">
+              {YOY_LEGEND_GROUPS.map((g) => (
+                <div key={g.groupLabel} className="yoy-metric-group">
+                  <span className="yoy-metric-group-label">{g.groupLabel}</span>
+                  {g.chips.map((it) => (
+                    <span key={it.key} className="yoy-metric-chip">
+                      <span
+                        className={`yoy-metric-chip-swatch${it.dashed ? ' yoy-metric-chip-swatch--dash' : ''}`}
+                        style={
+                          it.dashed
+                            ? {
+                                background: 'transparent',
+                                borderTop: `3px dashed ${it.color}`,
+                                height: 0,
+                                borderRadius: 0,
+                              }
+                            : { background: it.color }
+                        }
+                      />
+                      {it.label}
+                    </span>
+                  ))}
+                </div>
               ))}
             </div>
             <span className="yoy-legend-hint">실선 당월 · 점선 전년 동월 · 좌축 MAU · 우축 신규</span>

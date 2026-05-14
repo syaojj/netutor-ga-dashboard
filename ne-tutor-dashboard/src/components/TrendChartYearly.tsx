@@ -6,13 +6,14 @@ import { assignEventAnnotationLanes, splitEventNameToTwoLines } from '../utils/t
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
 import {
+  AREA_FILL_NAMES,
+  BAR_NAMES,
+  initialTrendSeriesVisibility,
   orderTrendSeriesForPlot,
   SERIES_STYLE,
   TREND_PRIMARY_NAMES,
   TREND_SERIES_NAMES,
   TREND_SERVICE_ROW,
-  AREA_FILL_NAMES,
-  BAR_NAMES,
   type TrendSeriesName,
 } from './trendSeriesConfig';
 
@@ -124,9 +125,6 @@ function buildLinearYAxisTicks(ymin: number, ymax: number): Partial<Layout['yaxi
   };
 }
 
-const initialVisible = (): Record<string, boolean> =>
-  Object.fromEntries(TREND_SERIES_NAMES.map((n) => [n, true]));
-
 export function TrendChartYearly(props: {
   yearly: YearlyMetricRow[];
   /** 월간 by-device 원시 행 — 호버 시 PC/MO 분해값 계산용 */
@@ -142,7 +140,7 @@ export function TrendChartYearly(props: {
   const { chartTheme } = useTheme();
   const shellRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState<Record<string, boolean>>(initialVisible);
+  const [visible, setVisible] = useState<Record<string, boolean>>(() => initialTrendSeriesVisibility());
   const [isFs, setIsFs] = useState(false);
   const [hover, setHover] = useState<HoverState | null>(null);
 
@@ -373,8 +371,13 @@ export function TrendChartYearly(props: {
     });
   }, []);
 
+  /** 연도별 차트에는 월간 LAW 시리즈가 없음 — 범례·전체 토글에서 제외 */
   const secondaryNames = useMemo<TrendSeriesName[]>(
-    () => TREND_SERIES_NAMES.filter((n) => !TREND_PRIMARY_NAMES.includes(n)),
+    () =>
+      TREND_SERIES_NAMES.filter(
+        (n) =>
+          !TREND_PRIMARY_NAMES.includes(n) && n !== 'E-Book MAU' && n !== '부가자료(개별) MAU',
+      ),
     [],
   );
   const allSecondaryOn = secondaryNames.every((n) => visible[n] !== false);

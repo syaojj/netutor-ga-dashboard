@@ -26,7 +26,6 @@ import { Sidebar } from './components/Sidebar';
 import { FiltersBar } from './components/FiltersBar';
 import { MonthlyTrendControls, type MonthlyPresetKey } from './components/MonthlyTrendControls';
 import { MonthlyTrendSummaryCards } from './components/MonthlyTrendSummaryCards';
-import { ImpactSummary } from './components/ImpactSummary';
 import { NeTutorEventCardsPanel } from './components/NeTutorEventCardsPanel';
 
 const TrendChart = lazy(async () => {
@@ -516,6 +515,7 @@ export default function App() {
                   <TrendChart
                     monthly={monthly}
                     monthlyByDevice={monthlyByDevice}
+                    ebookMonthly={ebookMonthly}
                     rangeStart={rs}
                     rangeEnd={re}
                     showPC={showPC}
@@ -579,21 +579,8 @@ export default function App() {
           </div>
 
           <div className="yoy-impact-events-row">
-            <div className="yoy-compare-impact-col trend-group-node">
-              <div className="trend-group-main trend-subsection-panel">
-                <TrendSubsectionTitle>주요 변경 추이</TrendSubsectionTitle>
-                <ImpactSummary
-                  embedded
-                  suppressTitle
-                  monthlyByDevice={monthlyByDevice}
-                  events={ECOSYSTEM_EVENTS}
-                  rangeStart={yoyRs}
-                  rangeEnd={yoyRe}
-                />
-              </div>
-            </div>
             <div className="yoy-event-cards-aside trend-group-node">
-              <div className="trend-group-main">
+              <div className="trend-group-main trend-subsection-panel">
                 <TrendSubsectionTitle>서비스별 이벤트 전후 지표</TrendSubsectionTitle>
                 <NeTutorEventCardsPanel
                   monthlyByDevice={monthlyByDevice}

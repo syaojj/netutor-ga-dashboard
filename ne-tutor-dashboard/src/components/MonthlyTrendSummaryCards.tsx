@@ -6,7 +6,6 @@ import { SERIES_STYLE, type TrendSeriesName } from './trendSeriesConfig';
 const SHARE_SERVICES: { key: string; label: string }[] = [
   { key: 'NELT', label: 'NELT' },
   { key: '문법문제', label: '문법문제뱅크' },
-  { key: '문법예문', label: '문법예문검색' },
   { key: '어휘출제', label: '어휘출제마법사' },
   { key: '클래스카드', label: '클래스카드' },
 ];

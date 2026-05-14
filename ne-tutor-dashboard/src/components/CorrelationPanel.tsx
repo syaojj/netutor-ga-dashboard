@@ -58,7 +58,11 @@ export function CorrelationPanel(props: {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    Plotly.newPlot(el, data, layout, { responsive: true, displaylogo: false });
+    Plotly.newPlot(el, data, layout, {
+      responsive: true,
+      displaylogo: false,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+    });
     return () => Plotly.purge(el);
   }, [data, layout]);
 

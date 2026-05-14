@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EbookMonthlyRow, MonthlyByDeviceRow } from '../types';
 import { listMonthsBetweenInclusive } from '../utils/monthRange';
 import { SERIES_STYLE, type TrendSeriesName } from './trendSeriesConfig';
@@ -24,6 +24,10 @@ function fmtPct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return '—';
   return `${n.toFixed(1)}%`;
 }
+
+/** 선택 기간 월평균 — 정보 버튼 클릭 시 레이어에 표시 */
+const MONTHLY_AVG_HELP_TOOLTIP =
+  '[NE Tutor] 구간 내 각 월 값의 산술평균이며, 선택 기간 전체의 고유 사용자 수는 아닙니다.\n\n[서비스별] 선택 기간 내 월별 MAU 평균입니다. 동일 사용자가 여러 월에 방문한 경우 각 월의 MAU에 포함됩니다.';
 
 /** 차트·원시와 동일한 디바이스 합산 규칙. PC+MO인데 모바일 결측(null)이면 해당 월 합계는 null */
 function mauForSelection(r: MonthlyByDeviceRow, showPC: boolean, showMobile: boolean): number | null {
@@ -58,10 +62,9 @@ function deviceHint(showPC: boolean, showMobile: boolean): string {
   return 'Mobile만';
 }
 
-/** E-Book LAW 고유 이용자(MAU) — NE Tutor MAU 대비 %와 동일 톤 계열 */
-const EBOOK_MAU_COLOR = '#93c5fd';
-/** 부가자료 개별 다운로드(MAU) */
-const SUP_MAU_COLOR = '#f9a8d4';
+/** E-Book·부가자료 카드 색 — 월별 추이 차트 LAW MAU 시리즈와 동일 */
+const EBOOK_MAU_COLOR = SERIES_STYLE['E-Book MAU'].color;
+const SUP_MAU_COLOR = SERIES_STYLE['부가자료(개별) MAU'].color;
 
 /**
  * 월별 구간·PC/Mobile 선택에 따른 요약 카드.
@@ -76,6 +79,28 @@ export function MonthlyTrendSummaryCards(props: {
   showPC: boolean;
   showMobile: boolean;
 }) {
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpRootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!helpOpen) return;
+    const onDocDown = (e: MouseEvent) => {
+      const el = helpRootRef.current;
+      if (el && !el.contains(e.target as Node)) setHelpOpen(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [helpOpen]);
+
+  useEffect(() => {
+    if (!helpOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHelpOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [helpOpen]);
+
   const stats = useMemo(() => {
     const months = listMonthsBetweenInclusive(props.rangeStart, props.rangeEnd);
     const { showPC, showMobile } = props;
@@ -195,10 +220,40 @@ export function MonthlyTrendSummaryCards(props: {
           </span>
         </div>
       </div>
-      <p className="monthly-trend-summary-lede">
-        GA에서 월 단위로 중복 제거된 MAU/신규사용자를 선택 기간 개월 수로 평균한 값입니다. 선택 기간 전체 고유 사용자 수와는
-        다릅니다.
-      </p>
+      <div className="monthly-trend-summary-lede-block" ref={helpRootRef}>
+        <p className="monthly-trend-summary-lede">
+          GA에서 월 단위로 중복 제거된 MAU/신규사용자를 선택 기간 개월 수로 평균한 값입니다. 선택 기간 전체 고유 사용자 수와는
+          다릅니다.{' '}
+          <button
+            type="button"
+            className="monthly-trend-summary-info"
+            aria-expanded={helpOpen}
+            aria-controls="monthly-avg-help-layer"
+            aria-label="NE Tutor·서비스별 월평균 추가 안내"
+            onClick={() => setHelpOpen((v) => !v)}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 16v-4M12 8h.01M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10Z"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </p>
+        {helpOpen ? (
+          <div
+            id="monthly-avg-help-layer"
+            className="monthly-trend-summary-help-layer"
+            role="region"
+            aria-label="월평균 산출 방식 안내"
+          >
+            <div className="monthly-trend-summary-help-layer__body">{MONTHLY_AVG_HELP_TOOLTIP}</div>
+          </div>
+        ) : null}
+      </div>
       <div className="monthly-trend-summary-grid monthly-trend-summary-grid--fluid">
         <div className="monthly-trend-ne-tower">
           <div className="monthly-trend-card monthly-trend-card--primary">
@@ -298,12 +353,6 @@ export function MonthlyTrendSummaryCards(props: {
             </div>
           </div>
         </div>
-        <p className="monthly-trend-note-box monthly-trend-note-box--ne" role="note">
-          구간 내 각 월 값의 산술평균이며, 선택 기간 전체의 고유 사용자 수는 아닙니다.
-        </p>
-        <p className="monthly-trend-note-box monthly-trend-note-box--services" role="note">
-          선택 기간 내 월별 MAU 평균입니다. 동일 사용자가 여러 월에 방문한 경우 각 월의 MAU에 포함됩니다.
-        </p>
       </div>
     </div>
   );

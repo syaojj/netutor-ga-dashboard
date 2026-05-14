@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import Plotly from 'plotly.js-dist-min';
-import type { Data, Layout, Shape } from 'plotly.js';
+import type { Config, Data, Layout, Shape } from 'plotly.js';
 import type { EbookMonthlyRow, EcosystemEvent, MonthlyByDeviceRow, MonthlyMetricRow } from '../types';
-import { assignEventAnnotationLanes, splitEventNameToTwoLines } from '../utils/trendEventLayout';
+import { assignEventAnnotationLanes, formatEventAnnotationHtml } from '../utils/trendEventLayout';
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
 import {
@@ -11,11 +11,24 @@ import {
   initialTrendSeriesVisibility,
   orderTrendSeriesForPlot,
   SERIES_STYLE,
+  TREND_LAW_MAU_SERIES,
+  TREND_NEW_TOGGLE_DISABLED,
   TREND_PRIMARY_NAMES,
   TREND_SERIES_NAMES,
   TREND_SERVICE_ROW,
   type TrendSeriesName,
 } from './trendSeriesConfig';
+
+/** 모드바 Autoscale·홈 복원 — purge 없이 react 할 때 축 UI 유지 */
+const TREND_PLOT_CONFIG: Partial<Config> = {
+  responsive: true,
+  displaylogo: false,
+  locale: 'ko',
+  displayModeBar: true,
+  /** lasso/select 제외 + autoScale: 로케일상 '전체화면'으로 보이나 실제 전체화면 아님·혼동 방지 */
+  modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+  doubleClick: 'reset+autosize',
+};
 
 /** 차트 색상을 영역 채움(반투명)·바 채움 등에 활용하기 위한 보조 함수 */
 function hexToRgba(hex: string, a: number): string {
@@ -106,24 +119,6 @@ function monthsInRange(rangeStart: string, rangeEnd: string): string[] {
 
 function formatMonthTick(mo: string): string {
   return `${mo.slice(0, 4)}.${mo.slice(5, 7)}`;
-}
-
-function eventColor(t: EcosystemEvent['type']): string {
-  if (t === 'end') return '#f87171';
-  if (t === 'reform') return '#c084fc';
-  if (t === 'launch') return '#60a5fa';
-  return '#4ade80';
-}
-
-function eventBubbleText(ev: EcosystemEvent): string {
-  if (ev.type === 'end') return '종료';
-  if (ev.type === 'reform') return '개편';
-  if (ev.type === 'launch') return '출시';
-  return '오픈';
-}
-
-function eventLineColor(ev: EcosystemEvent): string {
-  return eventColor(ev.type);
 }
 
 function buildLogYAxisTicks(ymin: number, ymax: number): { tickvals: number[]; ticktext: string[] } {
@@ -242,11 +237,11 @@ export function TrendChart(props: {
    * (이벤트 레인 영역 + 본문 + 하단 축) 합으로 계산.
    */
   const chartHeight = useMemo(() => {
-    const BUBBLE_LANE_SPACING_PX = 58;
-    const BUBBLE_HEIGHT_PX = 50;
+    const BUBBLE_LANE_SPACING_PX = 46;
+    const BUBBLE_HEIGHT_PX = 38;
     const topMargin = Math.max(
-      60,
-      eventLaneMeta.maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 10,
+      52,
+      eventLaneMeta.maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 8,
     );
     const PLOT_BODY_PX = 360;
     const BOTTOM_MARGIN_PX = 56;
@@ -393,6 +388,7 @@ export function TrendChart(props: {
   }, [seriesData, props.logScale, visible]);
 
   const toggleSeries = useCallback((name: string) => {
+    if (TREND_NEW_TOGGLE_DISABLED.has(name as TrendSeriesName)) return;
     setVisible((prev) => {
       const next = { ...prev, [name]: !prev[name] };
       const on = TREND_SERIES_NAMES.filter((n) => next[n] !== false).length;
@@ -405,17 +401,28 @@ export function TrendChart(props: {
     () => TREND_SERIES_NAMES.filter((n) => !TREND_PRIMARY_NAMES.includes(n)),
     [],
   );
-  const allSecondaryOn = secondaryNames.every((n) => visible[n] !== false);
+  const secondaryToggleable = useMemo(
+    () => secondaryNames.filter((n) => !TREND_NEW_TOGGLE_DISABLED.has(n)),
+    [secondaryNames],
+  );
+  const allSecondaryOn =
+    secondaryToggleable.length > 0 && secondaryToggleable.every((n) => visible[n] !== false);
   const toggleAllSecondary = useCallback(() => {
     setVisible((prev) => {
-      const target = !secondaryNames.every((n) => prev[n] !== false);
+      const target = !secondaryToggleable.every((n) => prev[n] !== false);
       const next = { ...prev };
-      for (const n of secondaryNames) next[n] = target;
+      for (const n of secondaryNames) {
+        if (TREND_NEW_TOGGLE_DISABLED.has(n)) {
+          next[n] = false;
+          continue;
+        }
+        next[n] = target;
+      }
       const on = TREND_SERIES_NAMES.filter((n) => next[n] !== false).length;
       if (on === 0) return prev;
       return next;
     });
-  }, [secondaryNames]);
+  }, [secondaryNames, secondaryToggleable]);
 
   const resizePlot = useCallback(() => {
     const el = plotRef.current;
@@ -457,6 +464,19 @@ export function TrendChart(props: {
   }, [resizePlot]);
 
   useEffect(() => {
+    return () => {
+      const el = plotRef.current;
+      if (el) {
+        try {
+          Plotly.purge(el);
+        } catch {
+          /* 언마운트 시 Plotly 정리 */
+        }
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const el = plotRef.current;
     if (!el) return;
 
@@ -468,6 +488,7 @@ export function TrendChart(props: {
       return mk >= firstM && mk <= lastM;
     });
 
+    const eventLineColor = chartTheme.eventLine;
     const shapes: Partial<Shape>[] = eventsVisible.map((ev) => ({
       type: 'line',
       xref: 'x',
@@ -476,7 +497,7 @@ export function TrendChart(props: {
       x1: monthKeyFromAnchor(ev.anchorDate),
       y0: 0,
       y1: 1,
-      line: { color: eventLineColor(ev), width: 1, dash: 'dot' },
+      line: { color: eventLineColor, width: 2.25, dash: 'dot' },
     }));
 
     const xTickStep = Math.max(1, Math.ceil(months.length / 14));
@@ -498,19 +519,17 @@ export function TrendChart(props: {
      * top margin 이 plot 영역을 잠식하는 문제가 있었음. 픽셀 단위 yshift 는 plot 높이와
      * 무관하므로 차트 본문이 일정하게 보장된다.
      */
-    const BUBBLE_LANE_SPACING_PX = 58;
-    const BUBBLE_HEIGHT_PX = 50;
+    const BUBBLE_LANE_SPACING_PX = 46;
+    const BUBBLE_HEIGHT_PX = 38;
     const annotations = annMeta.map(({ ev, lane, xshift }) => {
-      const border = eventLineColor(ev);
-      const lines = splitEventNameToTwoLines(ev.name);
       return {
         x: monthKeyFromAnchor(ev.anchorDate),
         xref: 'x' as const,
         xshift,
         y: 1,
         yref: 'paper' as const,
-        yshift: lane * BUBBLE_LANE_SPACING_PX + 6,
-        text: `<b>${eventBubbleText(ev)}</b><br>${lines.join('<br>')}`,
+        yshift: lane * BUBBLE_LANE_SPACING_PX + 4,
+        text: formatEventAnnotationHtml(ev),
         showarrow: false,
         arrowhead: 0,
         arrowwidth: 0,
@@ -518,20 +537,20 @@ export function TrendChart(props: {
         ay: 0,
         xanchor: 'center' as const,
         yanchor: 'bottom' as const,
-        bgcolor: chartTheme.bubbleBg,
-        bordercolor: border,
-        borderwidth: 1.5,
-        borderpad: 5,
-        font: { family: APP_FONT_FAMILY, size: 9, color: chartTheme.bubbleFont },
+        bgcolor: 'rgba(0,0,0,0)',
+        borderwidth: 0,
+        borderpad: 2,
+        font: { family: APP_FONT_FAMILY, size: 10, color: chartTheme.bubbleFont },
         align: 'center' as const,
       };
     });
 
     const maxLanes = annMeta.length === 0 ? 0 : Math.max(...annMeta.map((a) => a.lane + 1));
-    /** 픽셀 단위 top margin = 가장 위 레인의 bubble 상단 + 약간의 여유 */
-    const topMargin = Math.max(60, maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 10);
+    /** 픽셀 단위 top margin = 가장 위 레인의 라벨 상단 + 약간의 여유 */
+    const topMargin = Math.max(52, maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 8);
 
     const yaxis: Partial<Layout['yaxis']> = {
+      autorange: true,
       type: props.logScale ? 'log' : 'linear',
       gridcolor: chartTheme.grid,
       title: undefined,
@@ -547,6 +566,7 @@ export function TrendChart(props: {
     };
 
     const layout: Partial<Layout> = {
+      uirevision: 'monthly-mau-trend',
       paper_bgcolor: chartTheme.paper,
       plot_bgcolor: chartTheme.plot,
       font: { color: chartTheme.font, family: APP_FONT_FAMILY, size: 11 },
@@ -570,13 +590,12 @@ export function TrendChart(props: {
       bargap: 0.25,
     };
 
-    Plotly.newPlot(el, traces, layout, {
-      responsive: true,
-      displaylogo: false,
-      locale: 'ko',
-      displayModeBar: true,
-      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-    });
+    let cancelled = false;
+    const plotDiv = el as unknown as { data?: Data[] };
+    const redrawPromise =
+      plotDiv.data != null && Array.isArray(plotDiv.data) && plotDiv.data.length > 0
+        ? Plotly.react(el, traces, layout, TREND_PLOT_CONFIG)
+        : Plotly.newPlot(el, traces, layout, TREND_PLOT_CONFIG);
 
     /**
      * 커스텀 HTML 툴팁: 호버한 월(x) 기준으로 PC/MO 분해값을 직접 조회해서 표시.
@@ -712,17 +731,22 @@ export function TrendChart(props: {
       setHover({ x: xv, primary, secondary, left: mx, top: my });
     };
     const handleUnhover = () => setHover(null);
-    const pe = el as unknown as {
-      on: (ev: string, cb: (d: never) => void) => void;
-      removeAllListeners?: (ev: string) => void;
-    };
-    pe.on('plotly_hover', handleHover as unknown as (d: never) => void);
-    pe.on('plotly_unhover', handleUnhover as unknown as (d: never) => void);
+
+    void Promise.resolve(redrawPromise).then(() => {
+      if (cancelled) return;
+      const pe = el as unknown as {
+        on: (ev: string, cb: (d: never) => void) => void;
+        removeAllListeners?: (ev: string) => void;
+      };
+      pe.on('plotly_hover', handleHover as unknown as (d: never) => void);
+      pe.on('plotly_unhover', handleUnhover as unknown as (d: never) => void);
+    });
 
     return () => {
+      cancelled = true;
+      const pe = el as unknown as { removeAllListeners?: (ev: string) => void };
       pe.removeAllListeners?.('plotly_hover');
       pe.removeAllListeners?.('plotly_unhover');
-      Plotly.purge(el);
     };
   }, [
     traces,
@@ -741,66 +765,131 @@ export function TrendChart(props: {
 
   void props.services;
 
+  const renderVisibilityPill = useCallback(
+    (name: TrendSeriesName, mode: 'mau' | 'new', label: string) => {
+      const st = SERIES_STYLE[name];
+      const on = visible[name] !== false;
+      const disabled = TREND_NEW_TOGGLE_DISABLED.has(name);
+      const cssVars = { '--mau-trend-pill': st.color } as CSSProperties;
+      return (
+        <button
+          type="button"
+          className={`mau-trend-pill mau-trend-pill--${mode}${on && !disabled ? ' mau-trend-pill--on' : ' mau-trend-pill--off'}`}
+          style={cssVars}
+          title={name}
+          aria-pressed={on && !disabled}
+          disabled={disabled}
+          onClick={() => toggleSeries(name)}
+        >
+          <span className="mau-trend-pill__dot" aria-hidden />
+          {label}
+        </button>
+      );
+    },
+    [visible, toggleSeries],
+  );
+
   return (
     <div ref={shellRef} className="trend-chart-shell trend-chart-shell--flat">
-      <div className="trend-chart-toolbar">
-        <div className="trend-series-toggles" aria-label="표시할 시리즈 선택">
-          <div className="trend-toggle-group trend-toggle-group--primary">
-            {TREND_PRIMARY_NAMES.map((name) => {
-              const st = SERIES_STYLE[name];
-              const on = visible[name] !== false;
-              return (
-                <label key={name} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
-                  <input type="checkbox" checked={on} onChange={() => toggleSeries(name)} />
-                  <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
-                  <span>{name}</span>
-                </label>
-              );
-            })}
-          </div>
-          <div className="trend-toggle-group trend-toggle-group--others">
-            <label className="trend-trace-toggle trend-trace-toggle--all">
-              <input type="checkbox" checked={allSecondaryOn} onChange={toggleAllSecondary} />
-              <span>전체</span>
-            </label>
-            {(['MAU', '신규사용자'] as const).map((kind) => (
-              <div key={kind} className="trend-service-row">
-                <span className="trend-service-row-label">{kind}</span>
-                {TREND_SERVICE_ROW.map((s) => {
-                  const name = `${s.display} ${kind}` as TrendSeriesName;
-                  const st = SERIES_STYLE[name];
-                  const on = visible[name] !== false;
-                  return (
-                    <label key={name} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
-                      <input type="checkbox" checked={on} onChange={() => toggleSeries(name)} />
-                      <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
-                      <span>{s.display}</span>
-                    </label>
-                  );
-                })}
+      <div className="trend-chart-main-row">
+        <aside className="trend-chart-filters-col" aria-label="월별 MAU·신규사용자 추이 표시 선택">
+          <div className="mau-trend-query-card">
+            <h3 className="mau-trend-query-card__title">월별 MAU·신규사용자 추이</h3>
+
+            <p className="mau-trend-query-card__section-caption">기준선</p>
+            <div className="mau-trend-query-row">
+              <span className="mau-trend-query-row__name">NE Tutor</span>
+              <div className="mau-trend-query-row__pills">
+                {renderVisibilityPill('NE Tutor MAU', 'mau', 'MAU')}
+                {renderVisibilityPill('NE Tutor 신규사용자', 'new', '신규')}
               </div>
-            ))}
-            <div className="trend-service-row">
-              <span className="trend-service-row-label">LAW</span>
-              {(['E-Book MAU', '부가자료(개별) MAU'] as const).map((name) => {
-                const st = SERIES_STYLE[name];
-                const on = visible[name] !== false;
+            </div>
+            <div className="mau-trend-query-row">
+              <span className="mau-trend-query-row__name">통합회원</span>
+              <div className="mau-trend-query-row__pills">{renderVisibilityPill('통합회원', 'new', '신규가입')}</div>
+            </div>
+
+            <div className="mau-trend-query-card__divider" role="separator" />
+
+            <div className="mau-trend-query-card__service-head">
+              <span className="mau-trend-query-card__section-caption mau-trend-query-card__section-caption--row">
+                서비스
+              </span>
+              <button
+                type="button"
+                className={`mau-trend-select-all-btn${allSecondaryOn ? ' mau-trend-select-all-btn--active' : ''}`}
+                onClick={toggleAllSecondary}
+                aria-pressed={allSecondaryOn}
+              >
+                <span className="mau-trend-select-all-btn__icon" aria-hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path
+                      d="M5 12.5l3.5 3.5L19 6"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M5 18.5l3.5 3.5L19 12"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.4"
+                    />
+                  </svg>
+                </span>
+                전체 선택
+              </button>
+            </div>
+
+            <div className="mau-trend-matrix" role="group" aria-label="서비스별 MAU·신규">
+              <div className="mau-trend-matrix__head">
+                <span className="mau-trend-matrix__corner" />
+                <span>MAU</span>
+                <span>신규</span>
+              </div>
+              {TREND_SERVICE_ROW.map((s) => {
+                const mauName = `${s.display} MAU` as TrendSeriesName;
+                const newName = `${s.display} 신규사용자` as TrendSeriesName;
                 return (
-                  <label key={name} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
-                    <input type="checkbox" checked={on} onChange={() => toggleSeries(name)} />
-                    <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
-                    <span>{name}</span>
-                  </label>
+                  <div key={s.dataService} className="mau-trend-matrix__row">
+                    <span className="mau-trend-matrix__svc">{s.display}</span>
+                    <div className="mau-trend-matrix__cell">{renderVisibilityPill(mauName, 'mau', 'MAU')}</div>
+                    <div className="mau-trend-matrix__cell">{renderVisibilityPill(newName, 'new', '신규')}</div>
+                  </div>
+                );
+              })}
+              {TREND_LAW_MAU_SERIES.map((lawName) => {
+                const shortLabel = lawName === 'E-Book MAU' ? 'E-Book' : '부가자료';
+                return (
+                  <div key={lawName} className="mau-trend-matrix__row">
+                    <span className="mau-trend-matrix__svc">{shortLabel}</span>
+                    <div className="mau-trend-matrix__cell">{renderVisibilityPill(lawName, 'mau', 'MAU')}</div>
+                    <span className="mau-trend-matrix__dash" aria-hidden>
+                      —
+                    </span>
+                  </div>
                 );
               })}
             </div>
           </div>
+        </aside>
+        <div className="trend-chart-plot-col">
+          <div className="trend-chart-plot-head">
+            <button
+              type="button"
+              className="btn trend-fs-btn"
+              onClick={toggleFullscreen}
+              title="Plotly 툴바의 확대 아이콘은 축 자동 맞춤입니다. 여기서 차트 영역 전체화면을 켜고 끕니다."
+            >
+              {isFs ? '전체 화면 종료' : '전체 화면'}
+            </button>
+          </div>
+          <div ref={plotRef} className="trend-chart-plot-inner" style={{ width: '100%', height: chartHeight }} />
         </div>
-        <button type="button" className="btn trend-fs-btn" onClick={toggleFullscreen} title="Plotly 툴바의 확대 아이콘은 축 자동 맞춤입니다. 여기서 차트 영역 전체화면을 켜고 끕니다.">
-          {isFs ? '전체 화면 종료' : '전체 화면'}
-        </button>
       </div>
-      <div ref={plotRef} style={{ width: '100%', height: chartHeight }} />
       {hover && (hover.primary.length > 0 || hover.secondary.length > 0) && (
         <HoverCard
           hover={hover}

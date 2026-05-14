@@ -61,7 +61,11 @@ export function FlowSankey(props: {
       el.replaceChildren();
       return;
     }
-    Plotly.newPlot(el, spec.data, spec.layout, { responsive: true, displaylogo: false });
+    Plotly.newPlot(el, spec.data, spec.layout, {
+      responsive: true,
+      displaylogo: false,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+    });
     return () => Plotly.purge(el);
   }, [spec]);
 

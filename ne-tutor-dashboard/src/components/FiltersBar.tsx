@@ -1,5 +1,4 @@
 import type { CSSProperties } from 'react';
-import { useTheme } from '../context/ThemeContext';
 
 const row: CSSProperties = {
   display: 'flex',
@@ -21,7 +20,6 @@ export function FiltersBar(props: {
   onRefresh?: () => void;
 }) {
   void props.compact;
-  const { colorMode, setColorMode } = useTheme();
   const now = new Date();
   const updated = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -37,28 +35,6 @@ export function FiltersBar(props: {
           새로고침
         </button>
       )}
-      <div className="color-mode-toggle" role="radiogroup" aria-label="화면 색상 테마">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={colorMode === 'light'}
-          className={`color-mode-toggle__btn${colorMode === 'light' ? ' color-mode-toggle__btn--active' : ''}`}
-          onClick={() => setColorMode('light')}
-          title="밝은 배경(White)"
-        >
-          White
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={colorMode === 'dark'}
-          className={`color-mode-toggle__btn${colorMode === 'dark' ? ' color-mode-toggle__btn--active' : ''}`}
-          onClick={() => setColorMode('dark')}
-          title="어두운 배경(Dark)"
-        >
-          Dark
-        </button>
-      </div>
       {props.isInitialLoad && (
         <span style={{ ...label, color: 'var(--text)' }} aria-live="polite">
           데이터 로드 중…

@@ -22,7 +22,6 @@ import {
 import { getDataDateBounds, TREND_SERVICES } from './utils/metrics';
 import { clampRange, addDays } from './utils/dateUtil';
 import { Layout } from './components/Layout';
-import { Sidebar } from './components/Sidebar';
 import { FiltersBar } from './components/FiltersBar';
 import { MonthlyTrendControls, type MonthlyPresetKey } from './components/MonthlyTrendControls';
 import { MonthlyTrendSummaryCards } from './components/MonthlyTrendSummaryCards';
@@ -228,7 +227,7 @@ export default function App() {
     if (boundsSynced.current) return;
     if (dailyRaw.length === 0 && monthlyByDevice.length === 0) return;
     boundsSynced.current = true;
-    // 월간 차트·전년 동월 비교 기본 기간을 데이터 전체 범위로 동기화
+    // 월간 차트 기본 기간을 데이터 전체 범위로 동기화 (전년 동월은 아래에서 최근 1년)
     const minY = bounds.min.slice(0, 4);
     const minM = bounds.min.slice(5, 7);
     const maxY = bounds.max.slice(0, 4);
@@ -239,12 +238,12 @@ export default function App() {
     setToMonth(maxM);
     setRangeStart(bounds.min);
     setRangeEnd(bounds.max);
-    setYoyFromYear(minY);
-    setYoyFromMonth(minM);
-    setYoyToYear(maxY);
-    setYoyToMonth(maxM);
-    setYoyRangeStart(bounds.min);
-    setYoyRangeEnd(bounds.max);
+    // 전년 동월 비교 기본: 최근 1년 (월간 추이는 위와 같이 전체 범위)
+    const yoyEnd = bounds.max;
+    const yoyStartCandidate = addDays(yoyEnd, -364);
+    const yoyStart = yoyStartCandidate < bounds.min ? bounds.min : yoyStartCandidate;
+    setYoyRangeEnd(yoyEnd);
+    setYoyRangeStart(yoyStart);
   }, [dailyRaw.length, monthlyByDevice.length, bounds.min, bounds.max]);
 
   // rangeStart/End가 외부(프리셋 등)에 의해 바뀌면 from/to 드롭다운도 함께 동기화
@@ -431,17 +430,7 @@ export default function App() {
   return (
     <Layout
       hideTopBar={mainView === 'raw'}
-      sidebar={
-        <Sidebar
-          mainView={mainView}
-          activeRawFile={activeRawFile}
-          onDashboard={() => setMainView('dashboard')}
-          onOpenRaw={(filename) => {
-            setActiveRawFile(filename);
-            setMainView('raw');
-          }}
-        />
-      }
+      sidebar={null}
       filters={
         <FiltersBar
           usedSample={usedSample}
@@ -503,7 +492,6 @@ export default function App() {
           />
           <div className="trend-subsection trend-group-node">
             <div className="trend-group-main trend-subsection-panel">
-              <TrendSubsectionTitle>월별 MAU·신규사용자 추이</TrendSubsectionTitle>
               <Suspense
                 fallback={
                   <div className="chart-lazy-fallback chart-lazy-fallback--trend-block" role="status">

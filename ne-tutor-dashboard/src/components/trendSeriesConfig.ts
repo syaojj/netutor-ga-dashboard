@@ -30,6 +30,12 @@ export const TREND_SERIES_NAMES = [
 
 export type TrendSeriesName = (typeof TREND_SERIES_NAMES)[number];
 
+/**
+ * 월별 추이 좌측 UI에서 신규 토글을 비활성화할 시리즈(항상 끔, 클릭 불가).
+ * 비어 있으면 전부 조회 가능. (특정 서비스만 막을 때만 항목 추가.)
+ */
+export const TREND_NEW_TOGGLE_DISABLED: ReadonlySet<TrendSeriesName> = new Set();
+
 /** 상단(주력) 그룹: NE Tutor + 통합회원 신규가입 */
 export const TREND_PRIMARY_NAMES: readonly TrendSeriesName[] = [
   'NE Tutor MAU',
@@ -49,6 +55,9 @@ export const TREND_SERVICE_ROW: readonly { display: string; dataService: string 
   { display: '클래스카드', dataService: '클래스카드' },
 ] as const;
 
+/** MAU 범례 행에 함께 두는 LAW 시리즈(차트 선 색은 서비스 MAU와 겹치지 않게) */
+export const TREND_LAW_MAU_SERIES: readonly TrendSeriesName[] = ['E-Book MAU', '부가자료(개별) MAU'];
+
 export const SERIES_STYLE: Record<TrendSeriesName, { color: string; dash: 'solid' | 'dot' }> = {
   'NE Tutor MAU': { color: '#60a5fa', dash: 'solid' },
   'NE Tutor 신규사용자': { color: '#93c5fd', dash: 'dot' },
@@ -63,8 +72,9 @@ export const SERIES_STYLE: Record<TrendSeriesName, { color: string; dash: 'solid
   '어휘출제 신규사용자': { color: '#6ee7b7', dash: 'dot' },
   '클래스카드 MAU': { color: '#a78bfa', dash: 'solid' },
   '클래스카드 신규사용자': { color: '#c4b5fd', dash: 'dot' },
-  'E-Book MAU': { color: '#38bdf8', dash: 'solid' },
-  '부가자료(개별) MAU': { color: '#f472b6', dash: 'dot' },
+  /** 아래 둘: NE/NELT/문법·어휘·클래스 MAU 색과 구분(주황·인디고) */
+  'E-Book MAU': { color: '#ea580c', dash: 'solid' },
+  '부가자료(개별) MAU': { color: '#6366f1', dash: 'solid' },
 };
 
 /** 월별 추이 기본: 통합회원·서비스별 신규 시리즈는 끔, 나머지 켬 */
@@ -80,7 +90,7 @@ export function initialTrendSeriesVisibility(): Record<TrendSeriesName, boolean>
 
 /**
  * 차트 시리즈·trace 순서(맨 뒤 → 맨 앞, 앞쪽이 먼저 그려져 뒤에 깔림):
- * NE Tutor MAU → NE Tutor 신규사용자 → 통합회원 → 서비스(NELT, 문법문제, 문법예문, 어휘출제, 클래스카드) 각 MAU/신규.
+ * NE Tutor MAU → NE Tutor 신규사용자 → 통합회원 → 서비스(NELT, …) 각 MAU/신규 → E-Book·부가자료 MAU.
  */
 export function orderTrendSeriesForPlot<
   T extends { name: TrendSeriesName; y: (number | null)[] },
@@ -94,8 +104,7 @@ export function orderTrendSeriesForPlot<
       `${s.display} MAU` as TrendSeriesName,
       `${s.display} 신규사용자` as TrendSeriesName,
     ]),
-    'E-Book MAU',
-    '부가자료(개별) MAU',
+    ...TREND_LAW_MAU_SERIES,
   ];
   return orderedNames.map((n) => byName.get(n)).filter((s): s is T => s != null);
 }

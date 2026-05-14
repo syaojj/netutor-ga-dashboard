@@ -1,13 +1,18 @@
 /**
  * ne_tutor_event_cards_v2.html 스타일의 카드 그리드.
  * 검색 구간(월)에 기준일이 포함된 ECOSYSTEM_EVENTS만 표시하고,
- * NE Tutor 월간 통합 행으로 이벤트 전후 7개월(T-3~T+3) 추이·전월 대비 증감%를 연결합니다.
+ * NE Tutor 월간 통합 행으로 이벤트 전후 7개월(T-3~T+3) 추이·기준월(M) 대비 이후 3개월(M+1~M+3) 평균 증감%를 연결합니다.
  */
 import { useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { EcosystemEvent, MonthlyByDeviceRow } from '../types';
 import { addCalendarMonths, toMonthKey } from '../utils/dateUtil';
+import { SERIES_STYLE } from './trendSeriesConfig';
 
 const NE = 'NE Tutor';
+
+/** 스파크·범례 PC선 — 이벤트 유형과 무관(NE Tutor MAU와 동일 톤) */
+const EVENT_CARD_PC_LINE = SERIES_STYLE['NE Tutor MAU'].color;
+const EVENT_CARD_MO_LINE = '#a78bfa';
 
 type CardFilter = 'all' | 'open' | 'close' | 'event';
 
@@ -38,30 +43,15 @@ function filterKey(ev: EcosystemEvent): CardFilter {
 function badgeFor(ev: EcosystemEvent): { cls: string; label: string } {
   switch (ev.type) {
     case 'open':
-      return { cls: 'event-card-badge event-card-badge--open', label: '오픈' };
+      return { cls: 'event-card-badge event-card-badge--neutral', label: '오픈' };
     case 'launch':
-      return { cls: 'event-card-badge event-card-badge--open', label: '출시' };
+      return { cls: 'event-card-badge event-card-badge--neutral', label: '출시' };
     case 'end':
-      return { cls: 'event-card-badge event-card-badge--close', label: '종료' };
+      return { cls: 'event-card-badge event-card-badge--neutral', label: '종료' };
     case 'reform':
-      return { cls: 'event-card-badge event-card-badge--event', label: '개편' };
+      return { cls: 'event-card-badge event-card-badge--neutral', label: '개편' };
     default:
-      return { cls: 'event-card-badge', label: ev.type };
-  }
-}
-
-function accentColor(ev: EcosystemEvent): string {
-  switch (ev.type) {
-    case 'open':
-      return '#10b981';
-    case 'launch':
-      return '#3b82f6';
-    case 'end':
-      return '#ef4444';
-    case 'reform':
-      return '#f59e0b';
-    default:
-      return '#64748b';
+      return { cls: 'event-card-badge event-card-badge--neutral', label: ev.type };
   }
 }
 
@@ -93,16 +83,34 @@ interface MetricPack {
   moMauSeries: (number | null)[];
   moNewSeries: (number | null)[];
   moAllNull: boolean;
+  /** 스파크 X축 순서와 동일한 YYYY-MM (기준월 전후 각 3개월) */
+  sparkMonthKeys: string[];
+}
+
+/** M+1·M+2·M+3 세 달 값이 모두 있을 때만 산술평균, 하나라도 없으면 null */
+function mean3After(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  c: number | null | undefined,
+): number | null {
+  if (a == null || b == null || c == null) return null;
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c)) return null;
+  return (a + b + c) / 3;
 }
 
 function buildMetricPack(
   byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
   anchorMonth: string,
 ): MetricPack | null {
-  const prevM = addCalendarMonths(anchorMonth, -1);
-  const cur = neRow(byMonth, anchorMonth);
-  const prev = neRow(byMonth, prevM);
-  if (!cur && !prev) return null;
+  /** 발생월(M) 단일값 대비, 발생월 이후 3개월(M+1~M+3) 산술평균의 증감% (M+3 한 달만 비교하지 않음) */
+  const m1 = addCalendarMonths(anchorMonth, 1);
+  const m2 = addCalendarMonths(anchorMonth, 2);
+  const m3 = addCalendarMonths(anchorMonth, 3);
+  const rowAnchor = neRow(byMonth, anchorMonth);
+  const r1 = neRow(byMonth, m1);
+  const r2 = neRow(byMonth, m2);
+  const r3 = neRow(byMonth, m3);
+  if (!rowAnchor && !r1 && !r2 && !r3) return null;
 
   const read = (r: MonthlyByDeviceRow | undefined) =>
     r
@@ -114,8 +122,11 @@ function buildMetricPack(
         }
       : { pcMau: null as number | null, pcNew: null as number | null, moMau: null as number | null, moNew: null as number | null };
 
-  const c = read(cur);
-  const p = read(prev);
+  const base = read(rowAnchor);
+  const afterPcMau = mean3After(r1?.pcMau, r2?.pcMau, r3?.pcMau);
+  const afterPcNew = mean3After(r1?.pcNew, r2?.pcNew, r3?.pcNew);
+  const afterMoMau = mean3After(r1?.moMau, r2?.moMau, r3?.moMau);
+  const afterMoNew = mean3After(r1?.moNew, r2?.moNew, r3?.moNew);
 
   const months: string[] = [];
   for (let d = -3; d <= 3; d++) months.push(addCalendarMonths(anchorMonth, d));
@@ -134,15 +145,16 @@ function buildMetricPack(
   const moAllNull = [...moMauSeries, ...moNewSeries].every((v) => v == null);
 
   return {
-    pcMauMom: momPct(c.pcMau, p.pcMau),
-    pcNewMom: momPct(c.pcNew, p.pcNew),
-    moMauMom: momPct(c.moMau, p.moMau),
-    moNewMom: momPct(c.moNew, p.moNew),
+    pcMauMom: momPct(afterPcMau, base.pcMau),
+    pcNewMom: momPct(afterPcNew, base.pcNew),
+    moMauMom: momPct(afterMoMau, base.moMau),
+    moNewMom: momPct(afterMoNew, base.moNew),
     pcMauSeries,
     pcNewSeries,
     moMauSeries,
     moNewSeries,
     moAllNull,
+    sparkMonthKeys: months,
   };
 }
 
@@ -150,12 +162,16 @@ function statusFrom(m: MetricPack): { cls: string; line: string; sub: string } {
   const vals = [m.pcMauMom, m.pcNewMom, m.moMauMom, m.moNewMom].filter((v) => v != null && Number.isFinite(v)) as number[];
   if (vals.length === 0) return { cls: 'event-card-status event-card-status--neut', line: '데이터 없음', sub: '' };
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-  if (avg > 3) return { cls: 'event-card-status event-card-status--up', line: '↗ 전월 대비 상승', sub: 'NE Tutor 합산 지표' };
-  if (avg < -3) return { cls: 'event-card-status event-card-status--dn', line: '↘ 전월 대비 하락', sub: 'NE Tutor 합산 지표' };
+  if (avg > 3) return { cls: 'event-card-status event-card-status--up', line: '↗ 이후 3개월 평균 대비 상승', sub: 'NE Tutor 합산 지표' };
+  if (avg < -3) return { cls: 'event-card-status event-card-status--dn', line: '↘ 이후 3개월 평균 대비 하락', sub: 'NE Tutor 합산 지표' };
   return { cls: 'event-card-status event-card-status--neut', line: '→ 혼조·유지', sub: 'NE Tutor 합산 지표' };
 }
 
-const SPARK_X_LABELS = ['T-3', 'T-2', 'T-1', '이벤트', 'T+1', 'T+2', 'T+3'] as const;
+/** YYYY-MM → '26-01 */
+function formatSparkMonthLabel(ym: string): string {
+  if (ym.length < 7) return ym;
+  return `'${ym.slice(2, 4)}-${ym.slice(5, 7)}`;
+}
 
 function fmtSparkInt(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return '—';
@@ -177,13 +193,18 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
   } | null>(null);
 
   const vbW = 300;
-  const vbH = 96;
+  const vbH = 100;
   const padL = 42;
   const padR = 6;
-  const padB = 22;
+  const padB = 28;
   const padT = 6;
   const plotW = vbW - padL - padR;
   const plotH = vbH - padT - padB;
+
+  const sparkLabels = useMemo(
+    () => metrics.sparkMonthKeys.map(formatSparkMonthLabel),
+    [metrics.sparkMonthKeys],
+  );
 
   const n = metrics.pcMauSeries.length;
   const xs = metrics.pcMauSeries.map((_, i) => padL + (i / Math.max(1, n - 1)) * plotW);
@@ -273,17 +294,19 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
             </g>
           );
         })}
-        {SPARK_X_LABELS.map((lab, i) => {
+        {sparkLabels.map((lab, i) => {
           const x = xs[i];
+          const yBase = vbH - 3;
           return (
             <text
-              key={lab}
+              key={metrics.sparkMonthKeys[i] ?? i}
               x={x}
-              y={vbH - 4}
-              textAnchor="middle"
+              y={yBase}
+              transform={`rotate(-28 ${x} ${yBase})`}
+              textAnchor="end"
               fill="currentColor"
-              fillOpacity={0.65}
-              fontSize="9"
+              fillOpacity={0.68}
+              fontSize="8"
             >
               {lab}
             </text>
@@ -334,7 +357,7 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
             top: Math.max(4, tip.top - 108),
           }}
         >
-          <div className="event-card-spark-tooltip-title">{SPARK_X_LABELS[tip.idx]}</div>
+          <div className="event-card-spark-tooltip-title">{sparkLabels[tip.idx]}</div>
           {(
             [
               ['PC MAU', fmtSparkInt(metrics.pcMauSeries[tip.idx])],
@@ -385,7 +408,8 @@ export function NeTutorEventCardsPanel(props: {
   return (
     <div className="event-cards-panel" aria-label="서비스별 이벤트 전후 NE Tutor 지표">
       <p className="event-cards-panel-lede">
-        이벤트 기준월 대비 <strong>전월 대비 증감%</strong> · PC·Mobile × MAU·신규 4지표 · 스파크라인: 전월 3개월 → 기준월 →
+        증감%는 <strong>발생월(M)</strong> 단일 값을 기준으로, <strong>발생월 이후 3개월(M+1~M+3)의 산술평균</strong>과 비교한
+        변화율입니다. M+3 한 달 수치만을 대비한 값이 아닙니다. PC·모바일 × MAU·신규 4지표 · 스파크라인: 전월 3개월 → 기준월 →
         후월 3개월
       </p>
       <div className="event-cards-filter-row" role="toolbar" aria-label="이벤트 유형 필터">
@@ -416,11 +440,10 @@ export function NeTutorEventCardsPanel(props: {
         <div className="event-cards-grid">
           {cards.map(({ ev, M, metrics }) => {
             const badge = badgeFor(ev);
-            const ac = accentColor(ev);
             const st = statusFrom(metrics);
             return (
               <article key={ev.id} className="event-card">
-                <div className="event-card-accent" style={{ background: ac }} />
+                <div className="event-card-accent" aria-hidden />
                 <header className="event-card-head">
                   <div className="event-card-name">
                     <span>{ev.name}</span>
@@ -433,7 +456,7 @@ export function NeTutorEventCardsPanel(props: {
                 <div className="event-card-metrics-4">
                   <div className="event-card-metric-cell">
                     <div className="event-card-device event-card-device--pc">PC</div>
-                    <div className="event-card-kind">MAU 전월 대비</div>
+                    <div className="event-card-kind">MAU 이후 3개월 평균 대비</div>
                     <div className={valCls(metrics.pcMauMom)}>
                       {arrowFor(metrics.pcMauMom)}
                       {fmtMom(metrics.pcMauMom)}
@@ -441,7 +464,7 @@ export function NeTutorEventCardsPanel(props: {
                   </div>
                   <div className="event-card-metric-cell">
                     <div className="event-card-device event-card-device--pc">PC</div>
-                    <div className="event-card-kind">신규 전월 대비</div>
+                    <div className="event-card-kind">신규 이후 3개월 평균 대비</div>
                     <div className={valCls(metrics.pcNewMom)}>
                       {arrowFor(metrics.pcNewMom)}
                       {fmtMom(metrics.pcNewMom)}
@@ -449,7 +472,7 @@ export function NeTutorEventCardsPanel(props: {
                   </div>
                   <div className="event-card-metric-cell">
                     <div className="event-card-device event-card-device--mo">모바일</div>
-                    <div className="event-card-kind">MAU 전월 대비</div>
+                    <div className="event-card-kind">MAU 이후 3개월 평균 대비</div>
                     <div className={valCls(metrics.moMauMom)}>
                       {arrowFor(metrics.moMauMom)}
                       {fmtMom(metrics.moMauMom)}
@@ -457,7 +480,7 @@ export function NeTutorEventCardsPanel(props: {
                   </div>
                   <div className="event-card-metric-cell">
                     <div className="event-card-device event-card-device--mo">모바일</div>
-                    <div className="event-card-kind">신규 전월 대비</div>
+                    <div className="event-card-kind">신규 이후 3개월 평균 대비</div>
                     <div className={valCls(metrics.moNewMom)}>
                       {arrowFor(metrics.moNewMom)}
                       {fmtMom(metrics.moNewMom)}
@@ -471,24 +494,27 @@ export function NeTutorEventCardsPanel(props: {
                 <div className="event-card-chart-wrap">
                   <div className="event-card-legend">
                     <span>
-                      <i className="event-card-leg-line" style={{ background: ac }} /> PC MAU
-                    </span>
-                    <span>
-                      <i className="event-card-leg-line event-card-leg-line--dash" style={{ borderColor: ac }} /> PC
-                      신규
-                    </span>
-                    <span>
-                      <i className="event-card-leg-line" style={{ background: '#a78bfa' }} /> 모바일 MAU
+                      <i className="event-card-leg-line" style={{ background: EVENT_CARD_PC_LINE }} /> PC MAU
                     </span>
                     <span>
                       <i
                         className="event-card-leg-line event-card-leg-line--dash"
-                        style={{ borderColor: '#a78bfa' }}
+                        style={{ borderColor: EVENT_CARD_PC_LINE }}
+                      />{' '}
+                      PC 신규
+                    </span>
+                    <span>
+                      <i className="event-card-leg-line" style={{ background: EVENT_CARD_MO_LINE }} /> 모바일 MAU
+                    </span>
+                    <span>
+                      <i
+                        className="event-card-leg-line event-card-leg-line--dash"
+                        style={{ borderColor: EVENT_CARD_MO_LINE }}
                       />{' '}
                       모바일 신규
                     </span>
                   </div>
-                  <EventWindowSpark color={ac} colorMo="#a78bfa" metrics={metrics} />
+                  <EventWindowSpark color={EVENT_CARD_PC_LINE} colorMo={EVENT_CARD_MO_LINE} metrics={metrics} />
                 </div>
                 {metrics.moAllNull ? <p className="event-card-note">* 해당 구간 모바일 NE Tutor 행이 없거나 전부 결측입니다.</p> : null}
               </article>

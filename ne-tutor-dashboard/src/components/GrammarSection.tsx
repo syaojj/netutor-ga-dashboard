@@ -157,14 +157,22 @@ export function GrammarSection(props: {
   useEffect(() => {
     const el = refBar.current;
     if (!el) return;
-    Plotly.newPlot(el, barData.traces, barData.layout, { responsive: true, displaylogo: false });
+    Plotly.newPlot(el, barData.traces, barData.layout, {
+      responsive: true,
+      displaylogo: false,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+    });
     return () => Plotly.purge(el);
   }, [barData]);
 
   useEffect(() => {
     const el = refLine.current;
     if (!el || !props.hasOrders) return;
-    Plotly.newPlot(el, lineData.traces, lineData.layout, { responsive: true, displaylogo: false });
+    Plotly.newPlot(el, lineData.traces, lineData.layout, {
+      responsive: true,
+      displaylogo: false,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+    });
     return () => Plotly.purge(el);
   }, [lineData, props.hasOrders]);
 

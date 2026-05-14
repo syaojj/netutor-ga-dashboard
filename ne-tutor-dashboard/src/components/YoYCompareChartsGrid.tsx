@@ -11,15 +11,15 @@ import { useTheme } from '../context/ThemeContext';
 import { TREND_SERVICE_ROW } from './trendSeriesConfig';
 
 /**
- * 전년 동월 비교: 지표별 유사 색상군.
- * - MAU: 블루 계열(당월 진하게 · 전년 동월 밝게) — 같은 지표끼리 비교 용이
- * - 신규: 앰버·오렌지 계열(당월 진하게 · 전년 동월 밝게)
+ * 전년 동월 비교: 지표별 동일 색조 — 당월 실선(진함)·전년 동월 점선(연함).
+ * - MAU: 블루 계열
+ * - 신규: 오렌지 계열
  */
 const YOY_METRIC_COLORS = {
   mauCurrent: '#1d4ed8',
-  mauPrior: '#7dd3fc',
-  newCurrent: '#c2410c',
-  newPrior: '#fbbf24',
+  mauPrior: '#60a5fa',
+  newCurrent: '#ea580c',
+  newPrior: '#fb923c',
 } as const;
 
 const YOY_LEGEND_GROUPS: readonly {
@@ -364,8 +364,8 @@ export function YoYCompareChartsGrid(props: {
         hoverinfo: 'none',
         showlegend: false,
         connectgaps: false,
-        line: { shape: 'linear', width: 2.2, color: cMauC },
-        marker: { size: markerSize, color: cMauC },
+        line: { shape: 'linear', width: 2.6, color: cMauC },
+        marker: { size: markerSize, color: cMauC, line: { width: 0 } },
       });
       traces.push({
         type: 'scatter',
@@ -378,7 +378,7 @@ export function YoYCompareChartsGrid(props: {
         showlegend: false,
         connectgaps: false,
         line: { shape: 'linear', width: 2, dash: 'dot', color: cMauP },
-        marker: { size: Math.max(3, markerSize - 1), color: cMauP },
+        marker: { size: Math.max(3, markerSize - 1), color: cMauP, opacity: 0.92, line: { width: 0 } },
       });
       traces.push({
         type: 'scatter',
@@ -390,8 +390,8 @@ export function YoYCompareChartsGrid(props: {
         hoverinfo: 'none',
         showlegend: false,
         connectgaps: false,
-        line: { shape: 'linear', width: 2.2, color: cNewC },
-        marker: { size: markerSize, color: cNewC },
+        line: { shape: 'linear', width: 2.6, color: cNewC },
+        marker: { size: markerSize, color: cNewC, line: { width: 0 } },
       });
       traces.push({
         type: 'scatter',
@@ -404,7 +404,7 @@ export function YoYCompareChartsGrid(props: {
         showlegend: false,
         connectgaps: false,
         line: { shape: 'linear', width: 2, dash: 'dot', color: cNewP },
-        marker: { size: Math.max(3, markerSize - 1), color: cNewP },
+        marker: { size: Math.max(3, markerSize - 1), color: cNewP, opacity: 0.92, line: { width: 0 } },
       });
 
       if (props.logScale) {
@@ -497,6 +497,7 @@ export function YoYCompareChartsGrid(props: {
       const linearY2 = !props.logScale ? buildLinearYAxisTicks(payload.y2Min, payload.y2Max) : {};
 
       const yaxis: Partial<Layout['yaxis']> = {
+        autorange: true,
         type: props.logScale ? 'log' : 'linear',
         title: { text: 'MAU (명)', font: { size: 11, color: chartTheme.font } },
         gridcolor: chartTheme.grid,
@@ -512,6 +513,7 @@ export function YoYCompareChartsGrid(props: {
       };
 
       const yaxis2: Partial<Layout['yaxis']> = {
+        autorange: true,
         type: props.logScale ? 'log' : 'linear',
         title: { text: '신규 (명)', font: { size: 11, color: chartTheme.font } },
         overlaying: 'y',
@@ -529,6 +531,7 @@ export function YoYCompareChartsGrid(props: {
       };
 
       const layout: Partial<Layout> = {
+        uirevision: `yoy-compare-${payload.device}`,
         title: {
           text: '',
           font: { size: 1, color: chartTheme.fontStrong, family: APP_FONT_FAMILY },
@@ -558,7 +561,8 @@ export function YoYCompareChartsGrid(props: {
         displaylogo: false,
         locale: 'ko',
         displayModeBar: true,
-        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+        doubleClick: 'reset+autosize',
       });
 
       const gd = el as unknown as {

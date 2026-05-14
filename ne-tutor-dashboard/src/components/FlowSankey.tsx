@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { APP_FONT_FAMILY } from '../fonts';
+import { useTheme } from '../context/ThemeContext';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
 
@@ -7,6 +8,7 @@ export function FlowSankey(props: {
   flow: { labels: string[]; counts: Record<string, number>; totalGrammarBuyers: number };
   disabled: boolean;
 }) {
+  const { chartTheme } = useTheme();
   const ref = useRef<HTMLDivElement>(null);
 
   const spec = useMemo(() => {
@@ -37,20 +39,20 @@ export function FlowSankey(props: {
       node: {
         pad: 12,
         thickness: 14,
-        line: { color: '#374151', width: 0.4 },
+        line: { color: chartTheme.grid, width: 0.4 },
         label: labelNodes,
         color: colors,
       },
       link: { source, target, value },
     };
     const layout: Partial<Layout> = {
-      paper_bgcolor: '#1f2937',
-      plot_bgcolor: '#1f2937',
-      font: { color: '#e5e7eb', family: APP_FONT_FAMILY },
+      paper_bgcolor: chartTheme.paper,
+      plot_bgcolor: chartTheme.plot,
+      font: { color: chartTheme.font, family: APP_FONT_FAMILY },
       margin: { t: 8, r: 8, b: 8, l: 8 },
     };
     return { data: [data], layout, total };
-  }, [props.flow, props.disabled]);
+  }, [props.flow, props.disabled, chartTheme]);
 
   useEffect(() => {
     const el = ref.current;

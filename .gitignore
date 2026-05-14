@@ -1,3 +1,6 @@
+# Local full-tree backups (robocopy snapshots; keep out of git)
+backup/
+
 # Dependencies & build
 ne-tutor-dashboard/node_modules/
 ne-tutor-dashboard/dist/

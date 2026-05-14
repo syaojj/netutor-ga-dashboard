@@ -1,17 +1,5 @@
 import { useMemo, type CSSProperties } from 'react';
 
-const row: CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 10,
-  alignItems: 'center',
-  marginBottom: 14,
-  padding: '12px 14px',
-  borderRadius: 10,
-  border: '1px solid var(--border)',
-  background: 'rgba(15,23,42,0.55)',
-};
-
 const labelSt: CSSProperties = { fontSize: '0.8rem', color: 'var(--muted)' };
 
 const divider: CSSProperties = {
@@ -21,15 +9,12 @@ const divider: CSSProperties = {
   margin: '0 4px',
 };
 
-export type MonthlyPresetKey = '30d' | '3m' | '1y' | '2y' | '3y' | '4y' | 'all';
+export type MonthlyPresetKey = '1y' | '2y' | '3y' | 'all';
 
 const PRESETS: { key: MonthlyPresetKey; label: string }[] = [
-  { key: '30d', label: '최근 30일' },
-  { key: '3m', label: '최근 3개월' },
   { key: '1y', label: '최근 1년' },
   { key: '2y', label: '최근 2년' },
   { key: '3y', label: '최근 3년' },
-  { key: '4y', label: '최근 4년' },
   { key: 'all', label: '전체 기간' },
 ];
 
@@ -40,6 +25,8 @@ export function MonthlyTrendControls(props: {
   hideDeviceToggles?: boolean;
   /** 표시할 프리셋만 제한 (미지정 시 전체) */
   allowedPresets?: readonly MonthlyPresetKey[];
+  /** 프리셋 버튼 문구 덮어쓰기 (예: 전년 동월에서 all → '전체') */
+  presetLabelOverrides?: Partial<Record<MonthlyPresetKey, string>>;
   /** 접근성 라벨 */
   ariaLabel?: string;
   /** PC/Mobile 표시 ON/OFF (두 개 모두 OFF는 허용하지 않음) */
@@ -108,12 +95,12 @@ export function MonthlyTrendControls(props: {
     : PRESETS
   ).map((p) => (
     <button key={p.key} type="button" className="btn" onClick={() => props.onPreset(p.key)}>
-      {p.label}
+      {props.presetLabelOverrides?.[p.key] ?? p.label}
     </button>
   ));
 
   return (
-    <div className="trend-range-controls" style={row} aria-label={props.ariaLabel ?? '월별 데이터 현황 검색'}>
+    <div className="trend-range-controls" aria-label={props.ariaLabel ?? '월별 구간 검색'}>
       {!props.hideDeviceToggles && (
         <>
           <label style={{ ...labelSt, display: 'flex', gap: 6, alignItems: 'center' }}>

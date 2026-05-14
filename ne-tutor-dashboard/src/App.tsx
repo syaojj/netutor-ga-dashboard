@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
   DailyMetricRow,
   DeviceFilter,
@@ -15,25 +15,36 @@ import {
   RAW_MENU_ITEMS,
 } from './data/gaSources';
 import { ECOSYSTEM_EVENTS } from './data/events';
-import { parseHtmlSheets } from './utils/parseHtmlSheets';
-import { mergeDailyPreferWorkbook, parseGaWorkbook } from './utils/parseGaWorkbook';
-import { parseGaMonthlyWorkbook } from './utils/parseGaMonthlyWorkbook';
 import {
   monthlyByDeviceBounds,
   monthlyByDeviceToMonthly,
 } from './utils/monthlyTrend';
-import { parseOrdersWorkbook } from './utils/parseOrders';
 import { getDataDateBounds, TREND_SERVICES } from './utils/metrics';
 import { clampRange, addDays } from './utils/dateUtil';
 import { Layout } from './components/Layout';
 import { Sidebar } from './components/Sidebar';
 import { FiltersBar } from './components/FiltersBar';
-import { TrendChart } from './components/TrendChart';
-import { YoYCompareChartsGrid } from './components/YoYCompareChartsGrid';
 import { MonthlyTrendControls, type MonthlyPresetKey } from './components/MonthlyTrendControls';
 import { MonthlyTrendSummaryCards } from './components/MonthlyTrendSummaryCards';
 import { ImpactSummary } from './components/ImpactSummary';
-import { RawDataPanel } from './components/RawDataPanel';
+import { NeTutorEventCardsPanel } from './components/NeTutorEventCardsPanel';
+
+const TrendChart = lazy(async () => {
+  const m = await import('./components/TrendChart');
+  return { default: m.TrendChart };
+});
+const YoYCompareChartsGrid = lazy(async () => {
+  const m = await import('./components/YoYCompareChartsGrid');
+  return { default: m.YoYCompareChartsGrid };
+});
+const RawDataPanel = lazy(async () => {
+  const m = await import('./components/RawDataPanel');
+  return { default: m.RawDataPanel };
+});
+
+function TrendSubsectionTitle({ children }: { children: ReactNode }) {
+  return <h3 className="trend-subsection-title">{children}</h3>;
+}
 
 function normalizeAssetBase(baseUrl: string): string {
   if (!baseUrl || baseUrl === '/') return '/';
@@ -60,6 +71,8 @@ export default function App() {
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [usedSample, setUsedSample] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** GA/HTML·월간 병합까지 완료(주문 엑셀은 비동기 후속) */
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [showPC, setShowPC] = useState(true);
   const [showMobile, setShowMobile] = useState(false);
   const device: DeviceFilter = showPC && showMobile ? 'all' : showPC ? 'PC' : 'M';
@@ -72,7 +85,7 @@ export default function App() {
   const [logScale, setLogScale] = useState(true);
   const [mainView, setMainView] = useState<'dashboard' | 'raw'>('dashboard');
   const [activeRawFile, setActiveRawFile] = useState<string>(RAW_MENU_ITEMS[0].displayName);
-  /** 전년 동기 비교(월 축) 구간 — 월별 섹션과 독립 */
+  /** 전년 동월 비교(월 축) 구간 — 월별 섹션과 독립 */
   const [yoyFromYear, setYoyFromYear] = useState<string>('2024');
   const [yoyFromMonth, setYoyFromMonth] = useState<string>('01');
   const [yoyToYear, setYoyToYear] = useState<string>('2026');
@@ -97,58 +110,66 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    setInitialLoadDone(false);
     (async () => {
       try {
-        const htmlParts = await Promise.all(
-          GA_HTML_SOURCES.map(async (name) => {
-            const url = `${base}data/${encodeURIComponent(name)}`;
-            try {
-              const html = await fetchText(url);
-              return { name, html };
-            } catch {
-              return null;
-            }
-          }),
-        );
+        const dailyUrl = `${base}data/${encodeURIComponent(GA_DAILY_WORKBOOK_XLSX_NAME)}`;
+        const monthlyUrl = `${base}data/${encodeURIComponent(GA_MONTHLY_WORKBOOK_XLSX_NAME)}`;
+
+        const [parsers, htmlParts, gaBuf, monthlyBuf] = await Promise.all([
+          Promise.all([
+            import('./utils/parseHtmlSheets'),
+            import('./utils/parseGaWorkbook'),
+            import('./utils/parseGaMonthlyWorkbook'),
+          ]),
+          Promise.all(
+            GA_HTML_SOURCES.map(async (name) => {
+              const url = `${base}data/${encodeURIComponent(name)}`;
+              try {
+                const html = await fetchText(url);
+                return { name, html };
+              } catch {
+                return null;
+              }
+            }),
+          ),
+          fetchBuf(dailyUrl).catch(() => null),
+          fetchBuf(monthlyUrl).catch(() => null),
+        ]);
+
+        const [{ parseHtmlSheets }, { parseGaWorkbook, mergeDailyPreferWorkbook }, { parseGaMonthlyWorkbook }] =
+          parsers;
+
         const valid = htmlParts.filter(Boolean) as { name: string; html: string }[];
         const parsedHtml = parseHtmlSheets(valid);
 
         let fromWorkbook: DailyMetricRow[] = [];
         let parsedEbookMonthly: EbookMonthlyRow[] = [];
-        try {
-          const gaBuf = await fetchBuf(`${base}data/${encodeURIComponent(GA_DAILY_WORKBOOK_XLSX_NAME)}`);
-          const pw = parseGaWorkbook(gaBuf);
-          fromWorkbook = pw.daily;
-          parsedEbookMonthly = pw.ebookMonthly;
-        } catch {
-          /* 일별 xlsx 없으면 HTML만 사용 */
+        if (gaBuf) {
+          try {
+            const pw = parseGaWorkbook(gaBuf);
+            fromWorkbook = pw.daily;
+            parsedEbookMonthly = pw.ebookMonthly;
+          } catch {
+            /* 일별 xlsx 파싱 실패 시 HTML만 사용 */
+          }
         }
 
         let parsedMonthlyByDevice: MonthlyByDeviceRow[] = [];
-        try {
-          const monthlyBuf = await fetchBuf(
-            `${base}data/${encodeURIComponent(GA_MONTHLY_WORKBOOK_XLSX_NAME)}`,
-          );
-          const pm = parseGaMonthlyWorkbook(monthlyBuf);
-          parsedMonthlyByDevice = pm.monthlyByDevice;
-          if (pm.ebookMonthly.length > 0) parsedEbookMonthly = pm.ebookMonthly;
-        } catch {
-          /* 월간 xlsx 없음 */
+        if (monthlyBuf) {
+          try {
+            const pm = parseGaMonthlyWorkbook(monthlyBuf);
+            parsedMonthlyByDevice = pm.monthlyByDevice;
+            if (pm.ebookMonthly.length > 0) parsedEbookMonthly = pm.ebookMonthly;
+          } catch {
+            /* 월간 xlsx 파싱 실패 */
+          }
         }
 
         const mergedDaily =
           fromWorkbook.length > 0
             ? mergeDailyPreferWorkbook(fromWorkbook, parsedHtml.daily)
             : parsedHtml.daily;
-
-        let orderList: OrderRecord[] = [];
-        try {
-          const buf = await fetchBuf(`${base}data/${encodeURIComponent(ORDERS_XLSX_NAME)}`);
-          const po = parseOrdersWorkbook(buf);
-          orderList = po.orders;
-        } catch {
-          /* 주문 엑셀 없음 */
-        }
 
         if (cancelled) return;
 
@@ -160,9 +181,23 @@ export default function App() {
           setUsedSample(false);
         }
         setMonthlyByDevice(parsedMonthlyByDevice);
-        setOrders(orderList);
+        setOrders([]);
         setEbookMonthly(parsedEbookMonthly);
         setLoadError(null);
+        setInitialLoadDone(true);
+
+        const ordersUrl = `${base}data/${encodeURIComponent(ORDERS_XLSX_NAME)}`;
+        void (async () => {
+          try {
+            const buf = await fetchBuf(ordersUrl);
+            if (cancelled) return;
+            const { parseOrdersWorkbook } = await import('./utils/parseOrders');
+            const po = parseOrdersWorkbook(buf);
+            if (!cancelled) setOrders(po.orders);
+          } catch {
+            if (!cancelled) setOrders([]);
+          }
+        })();
       } catch (e) {
         if (!cancelled) {
           setDailyRaw(buildSampleDaily());
@@ -171,6 +206,7 @@ export default function App() {
           setEbookMonthly([]);
           setUsedSample(true);
           setLoadError(e instanceof Error ? e.message : '로드 오류');
+          setInitialLoadDone(true);
         }
       }
     })();
@@ -193,7 +229,7 @@ export default function App() {
     if (boundsSynced.current) return;
     if (dailyRaw.length === 0 && monthlyByDevice.length === 0) return;
     boundsSynced.current = true;
-    // 월간 차트·전년 동기 비교 기본 기간을 데이터 전체 범위로 동기화
+    // 월간 차트·전년 동월 비교 기본 기간을 데이터 전체 범위로 동기화
     const minY = bounds.min.slice(0, 4);
     const minM = bounds.min.slice(5, 7);
     const maxY = bounds.max.slice(0, 4);
@@ -257,12 +293,9 @@ export default function App() {
         setRangeEnd(bounds.max);
         return;
       }
-      if (key === '30d') return setRange(-29);
-      if (key === '3m') return setRange(-89);
       if (key === '1y') return setRange(-364);
       if (key === '2y') return setRange(-729);
       if (key === '3y') return setRange(-1094);
-      if (key === '4y') return setRange(-1459);
     },
     [bounds],
   );
@@ -346,17 +379,14 @@ export default function App() {
         setYoyRangeEnd(bounds.max);
         return;
       }
-      if (key === '30d') return setRange(-29);
-      if (key === '3m') return setRange(-89);
       if (key === '1y') return setRange(-364);
       if (key === '2y') return setRange(-729);
       if (key === '3y') return setRange(-1094);
-      if (key === '4y') return setRange(-1459);
     },
     [bounds],
   );
 
-  /** 전년 동기 비교: 시작/종료 (YYYY,MM) → yoyRange 동기화 */
+  /** 전년 동월 비교: 시작/종료 (YYYY,MM) → yoyRange 동기화 */
   const applyYoyFromTo = useCallback(
     (fy: string, fm: string, ty: string, tm: string) => {
       let start = `${fy}-${fm}-01`;
@@ -417,93 +447,164 @@ export default function App() {
         <FiltersBar
           usedSample={usedSample}
           loadError={loadError}
+          isInitialLoad={!initialLoadDone}
           onRefresh={() => window.location.reload()}
         />
       }
     >
       {mainView === 'raw' && (
-        <RawDataPanel
-          sourceFile={activeRawFile}
-          monthlyByDevice={monthlyByDevice}
-          ebookMonthly={ebookMonthly}
-          orders={orders}
-        />
+        <Suspense
+          fallback={
+            <div className="chart-lazy-fallback" role="status">
+              원시 데이터 패널 로딩 중…
+            </div>
+          }
+        >
+          <RawDataPanel
+            sourceFile={activeRawFile}
+            monthlyByDevice={monthlyByDevice}
+            ebookMonthly={ebookMonthly}
+            orders={orders}
+          />
+        </Suspense>
       )}
 
       {mainView === 'dashboard' && (
         <>
-      <section id="trend" className="section">
-        <h2 className="section-title">월별 데이터 현황</h2>
-        <MonthlyTrendControls
-          showPC={showPC}
-          showMobile={showMobile}
-          onShowPC={setShowPC}
-          onShowMobile={setShowMobile}
-          yearOptions={monthlyYearOptions}
-          fromYear={fromYear}
-          fromMonth={fromMonth}
-          toYear={toYear}
-          toMonth={toMonth}
-          onFromYear={onFromYear}
-          onFromMonth={onFromMonth}
-          onToYear={onToYear}
-          onToMonth={onToMonth}
-          onPreset={applyMonthlyPreset}
-          logScale={logScale}
-          onLogScale={setLogScale}
-        />
-        <MonthlyTrendSummaryCards
-          monthlyByDevice={monthlyByDevice}
-          rangeStart={rs}
-          rangeEnd={re}
-          showPC={showPC}
-          showMobile={showMobile}
-        />
-        <div className="trend-impact-grid">
-          <TrendChart
-            monthly={monthly}
+      <section id="trend" className="section section--monthly-trend-analysis">
+        <h2 className="section-title">월별 이용 추이 분석</h2>
+        <div className="trend-subsection">
+          <MonthlyTrendControls
+            showPC={showPC}
+            showMobile={showMobile}
+            onShowPC={setShowPC}
+            onShowMobile={setShowMobile}
+            yearOptions={monthlyYearOptions}
+            fromYear={fromYear}
+            fromMonth={fromMonth}
+            toYear={toYear}
+            toMonth={toMonth}
+            onFromYear={onFromYear}
+            onFromMonth={onFromMonth}
+            onToYear={onToYear}
+            onToMonth={onToMonth}
+            onPreset={applyMonthlyPreset}
+            logScale={logScale}
+            onLogScale={setLogScale}
+          />
+        </div>
+        <div className="trend-section-group">
+          <MonthlyTrendSummaryCards
             monthlyByDevice={monthlyByDevice}
+            ebookMonthly={ebookMonthly}
             rangeStart={rs}
             rangeEnd={re}
             showPC={showPC}
             showMobile={showMobile}
-            logScale={logScale}
-            events={ECOSYSTEM_EVENTS}
-            services={[...TREND_SERVICES]}
           />
-          <ImpactSummary monthlyByDevice={monthlyByDevice} events={ECOSYSTEM_EVENTS} />
+          <div className="trend-subsection trend-group-node">
+            <div className="trend-group-main trend-subsection-panel">
+              <TrendSubsectionTitle>월별 MAU·신규사용자 추이</TrendSubsectionTitle>
+              <Suspense
+                fallback={
+                  <div className="chart-lazy-fallback chart-lazy-fallback--trend-block" role="status">
+                    차트 모듈(Plotly) 로딩 중…
+                  </div>
+                }
+              >
+                <div className="trend-chart-row">
+                  <TrendChart
+                    monthly={monthly}
+                    monthlyByDevice={monthlyByDevice}
+                    rangeStart={rs}
+                    rangeEnd={re}
+                    showPC={showPC}
+                    showMobile={showMobile}
+                    logScale={logScale}
+                    events={ECOSYSTEM_EVENTS}
+                    services={[...TREND_SERVICES]}
+                  />
+                </div>
+              </Suspense>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section id="yoy-compare" className="section">
-        <h2 className="section-title">전년 동기 비교</h2>
-        <MonthlyTrendControls
-          ariaLabel="전년 동기 비교 검색"
-          hideDeviceToggles
-          allowedPresets={['30d', '3m', '1y', '2y', '3y', '4y']}
-          showPC
-          showMobile={false}
-          onShowPC={() => {}}
-          onShowMobile={() => {}}
-          yearOptions={monthlyYearOptions}
-          fromYear={yoyFromYear}
-          fromMonth={yoyFromMonth}
-          toYear={yoyToYear}
-          toMonth={yoyToMonth}
-          onFromYear={onYoyFromYear}
-          onFromMonth={onYoyFromMonth}
-          onToYear={onYoyToYear}
-          onToMonth={onYoyToMonth}
-          onPreset={applyYoyPreset}
-          logScale={yoyLogScale}
-          onLogScale={setYoyLogScale}
-        />
-        <YoYCompareChartsGrid
-          monthlyByDevice={monthlyByDevice}
-          rangeStart={yoyRs}
-          rangeEnd={yoyRe}
-          logScale={yoyLogScale}
-        />
+      <section id="yoy-compare" className="section section--yoy-analysis">
+        <h2 className="section-title">전년 동월 비교</h2>
+        <div className="trend-subsection">
+          <MonthlyTrendControls
+            ariaLabel="전년 동월 비교 — 기간 검색"
+            hideDeviceToggles
+            allowedPresets={['1y', '2y', '3y', 'all']}
+            presetLabelOverrides={{ all: '전체' }}
+            showPC
+            showMobile={false}
+            onShowPC={() => {}}
+            onShowMobile={() => {}}
+            yearOptions={monthlyYearOptions}
+            fromYear={yoyFromYear}
+            fromMonth={yoyFromMonth}
+            toYear={yoyToYear}
+            toMonth={yoyToMonth}
+            onFromYear={onYoyFromYear}
+            onFromMonth={onYoyFromMonth}
+            onToYear={onYoyToYear}
+            onToMonth={onYoyToMonth}
+            onPreset={applyYoyPreset}
+            logScale={yoyLogScale}
+            onLogScale={setYoyLogScale}
+          />
+        </div>
+        <div className="trend-section-group">
+          <div className="trend-group-node yoy-chart-section-node">
+            <div className="trend-group-main trend-subsection-panel">
+              <TrendSubsectionTitle>선택 기간 전년 동월 추이</TrendSubsectionTitle>
+              <Suspense
+                fallback={
+                  <div className="chart-lazy-fallback chart-lazy-fallback--trend-block" role="status">
+                    전년 동월 차트 로딩 중…
+                  </div>
+                }
+              >
+                <YoYCompareChartsGrid
+                  monthlyByDevice={monthlyByDevice}
+                  rangeStart={yoyRs}
+                  rangeEnd={yoyRe}
+                  logScale={yoyLogScale}
+                />
+              </Suspense>
+            </div>
+          </div>
+
+          <div className="yoy-impact-events-row">
+            <div className="yoy-compare-impact-col trend-group-node">
+              <div className="trend-group-main trend-subsection-panel">
+                <TrendSubsectionTitle>주요 변경 추이</TrendSubsectionTitle>
+                <ImpactSummary
+                  embedded
+                  suppressTitle
+                  monthlyByDevice={monthlyByDevice}
+                  events={ECOSYSTEM_EVENTS}
+                  rangeStart={yoyRs}
+                  rangeEnd={yoyRe}
+                />
+              </div>
+            </div>
+            <div className="yoy-event-cards-aside trend-group-node">
+              <div className="trend-group-main">
+                <TrendSubsectionTitle>서비스별 이벤트 전후 지표</TrendSubsectionTitle>
+                <NeTutorEventCardsPanel
+                  monthlyByDevice={monthlyByDevice}
+                  events={ECOSYSTEM_EVENTS}
+                  rangeStart={yoyRs}
+                  rangeEnd={yoyRe}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
         </>

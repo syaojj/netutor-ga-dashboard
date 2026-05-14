@@ -4,6 +4,17 @@ import type { Data, Layout, Shape } from 'plotly.js';
 import type { EcosystemEvent, MonthlyByDeviceRow, MonthlyMetricRow } from '../types';
 import { assignEventAnnotationLanes, splitEventNameToTwoLines } from '../utils/trendEventLayout';
 import { APP_FONT_FAMILY } from '../fonts';
+import { useTheme } from '../context/ThemeContext';
+import {
+  AREA_FILL_NAMES,
+  BAR_NAMES,
+  orderTrendSeriesForPlot,
+  SERIES_STYLE,
+  TREND_PRIMARY_NAMES,
+  TREND_SERIES_NAMES,
+  TREND_SERVICE_ROW,
+  type TrendSeriesName,
+} from './trendSeriesConfig';
 
 /** 차트 색상을 영역 채움(반투명)·바 채움 등에 활용하기 위한 보조 함수 */
 function hexToRgba(hex: string, a: number): string {
@@ -14,27 +25,26 @@ function hexToRgba(hex: string, a: number): string {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
-/** 영역 채움(NE Tutor) 대상 시리즈 */
-const AREA_FILL_NAMES = new Set<string>(['NE Tutor MAU', 'NE Tutor 신규사용자']);
-/** 막대 그래프로 렌더링할 시리즈 */
-const BAR_NAMES = new Set<string>(['통합회원']);
-
 /** 호버 시 표시할 서비스별 PC/MO 분해값 */
 interface HoverServiceData {
   /** 표시명 (NE Tutor, NELT, 문법문제 …) */
   name: string;
   /** 라운드 swatch 색상 — MAU 시리즈 색을 사용 */
   color: string;
-  pcMau: number;
-  moMau: number;
-  pcNew: number;
-  moNew: number;
+  pcMau: number | null;
+  moMau: number | null;
+  pcNew: number | null;
+  moNew: number | null;
   /** 통합회원 시트 교강사 신규 (PC+Mobile 동시 선택 시 합산에 포함) */
-  teacherNew?: number;
+  teacherNew?: number | null;
   /** 통합회원 등 MAU 가 없는 시트인지 여부 */
   hasMau: boolean;
   /** 통합회원 등 신규사용자만 표기되는지 (라벨용) */
   newOnly?: boolean;
+  /** 범례 체크된 MAU 시리즈만 툴팁 MAU 행 표시 */
+  showMauTooltip: boolean;
+  /** 범례 체크된 신규(또는 통합회원) 시리즈만 툴팁 신규 행 표시 */
+  showNewTooltip: boolean;
 }
 
 interface HoverState {
@@ -48,7 +58,8 @@ interface HoverState {
   top: number;
 }
 
-function fmtIntKo(n: number): string {
+function fmtIntKo(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
   return new Intl.NumberFormat('ko-KR').format(n);
 }
 
@@ -59,60 +70,6 @@ function mauColorForService(svc: string): string {
   const key = `${svc} MAU` as TrendSeriesName;
   return SERIES_STYLE[key]?.color ?? '#94a3b8';
 }
-
-/** 시리즈명·범례 토글에 동일하게 사용 (※ 표시용 라벨 = 시리즈명) */
-export const TREND_SERIES_NAMES = [
-  'NE Tutor MAU',
-  'NE Tutor 신규사용자',
-  '통합회원',
-  'NELT MAU',
-  'NELT 신규사용자',
-  '문법문제 MAU',
-  '문법문제 신규사용자',
-  '문법예문 MAU',
-  '문법예문 신규사용자',
-  '어휘출제 MAU',
-  '어휘출제 신규사용자',
-  '클래스카드 MAU',
-  '클래스카드 신규사용자',
-] as const;
-
-export type TrendSeriesName = (typeof TREND_SERIES_NAMES)[number];
-
-/** 상단(주력) 그룹: NE Tutor + 통합회원 신규가입 */
-export const TREND_PRIMARY_NAMES: readonly TrendSeriesName[] = [
-  'NE Tutor MAU',
-  'NE Tutor 신규사용자',
-  '통합회원',
-] as const;
-
-/**
- * 하단(서비스) 그룹: 표시 라벨 ↔ 월간 xlsx 시트의 서비스명 매핑.
- * 월간 xlsx는 이미 짧은 이름(NELT/문법문제/문법예문/어휘출제/클래스카드)을 사용한다.
- */
-export const TREND_SERVICE_ROW: readonly { display: string; dataService: string }[] = [
-  { display: 'NELT', dataService: 'NELT' },
-  { display: '문법문제', dataService: '문법문제' },
-  { display: '문법예문', dataService: '문법예문' },
-  { display: '어휘출제', dataService: '어휘출제' },
-  { display: '클래스카드', dataService: '클래스카드' },
-] as const;
-
-export const SERIES_STYLE: Record<TrendSeriesName, { color: string; dash: 'solid' | 'dot' }> = {
-  'NE Tutor MAU': { color: '#60a5fa', dash: 'solid' },
-  'NE Tutor 신규사용자': { color: '#93c5fd', dash: 'dot' },
-  '통합회원': { color: '#f87171', dash: 'solid' },
-  'NELT MAU': { color: '#fbbf24', dash: 'solid' },
-  'NELT 신규사용자': { color: '#fcd34d', dash: 'dot' },
-  '문법문제 MAU': { color: '#f472b6', dash: 'solid' },
-  '문법문제 신규사용자': { color: '#f9a8d4', dash: 'dot' },
-  '문법예문 MAU': { color: '#2dd4bf', dash: 'solid' },
-  '문법예문 신규사용자': { color: '#5eead4', dash: 'dot' },
-  '어휘출제 MAU': { color: '#34d399', dash: 'solid' },
-  '어휘출제 신규사용자': { color: '#6ee7b7', dash: 'dot' },
-  '클래스카드 MAU': { color: '#a78bfa', dash: 'solid' },
-  '클래스카드 신규사용자': { color: '#c4b5fd', dash: 'dot' },
-};
 
 function monthKeyFromAnchor(iso: string): string {
   return iso.slice(0, 7);
@@ -217,6 +174,7 @@ export function TrendChart(props: {
   events: EcosystemEvent[];
   services: readonly string[];
 }) {
+  const { chartTheme } = useTheme();
   const shellRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState<Record<string, boolean>>(initialVisible);
@@ -301,24 +259,23 @@ export function TrendChart(props: {
   const traces = useMemo((): Data[] => {
     const { months, series, markerSize } = seriesData;
     /**
-     * Plotly는 trace 배열의 앞쪽 원소를 먼저 그리고 뒤쪽 원소를 위에 덮어 그립니다.
-     * NE Tutor 면 채움 그래프가 다른 라인을 가리지 않도록 가장 먼저(맨 뒤) 그리고,
-     * 그 위에 막대(통합회원) → 나머지 라인 시리즈 순으로 배치합니다.
+     * 맨 뒤→앞: NE Tutor MAU → NE Tutor 신규 → 통합회원(막대) → 서비스 선들.
+     * `orderTrendSeriesForPlot` 순서로 trace를 쌓고, 시리즈 인덱스마다 `zorder`를 한 칸씩 올려 bar가 서비스보다 뒤에 오게 합니다.
      */
-    const orderedSeries = [
-      ...series.filter((s) => AREA_FILL_NAMES.has(s.name)),
-      ...series.filter((s) => BAR_NAMES.has(s.name)),
-      ...series.filter((s) => !AREA_FILL_NAMES.has(s.name) && !BAR_NAMES.has(s.name)),
-    ];
-
+    const orderedSeries = orderTrendSeriesForPlot(series);
     const out: Data[] = [];
-    for (const s of orderedSeries) {
+
+    for (let i = 0; i < orderedSeries.length; i++) {
+      const s = orderedSeries[i];
       const on = visible[s.name] !== false;
       const st = SERIES_STYLE[s.name];
       const yRaw = s.y;
       const y = props.logScale
         ? yRaw.map((v) => (v != null && Number.isFinite(v) && v > 0 ? v : null))
         : yRaw.map((v) => (v != null && Number.isFinite(v) ? v : null));
+
+      const zFill = i * 10;
+      const zMain = i * 10 + 1;
 
       // 통합회원: 막대그래프
       if (BAR_NAMES.has(s.name)) {
@@ -329,16 +286,51 @@ export function TrendChart(props: {
           y,
           visible: on,
           showlegend: false,
+          zorder: zMain,
           marker: { color: hexToRgba(st.color, 0.75), line: { color: st.color, width: 1 } },
           hoverinfo: 'none',
-        });
+        } as Data);
         continue;
       }
 
-      // NE Tutor 라인: 영역 채움
-      const fillProps = AREA_FILL_NAMES.has(s.name)
-        ? { fill: 'tozeroy' as const, fillcolor: hexToRgba(st.color, 0.14) }
-        : {};
+      if (AREA_FILL_NAMES.has(s.name)) {
+        const fillLine = hexToRgba(st.color, 0.14);
+        out.push({
+          type: 'scatter',
+          mode: 'lines',
+          name: `${s.name}__fill`,
+          x: months,
+          y,
+          visible: on,
+          showlegend: false,
+          connectgaps: false,
+          hoverinfo: 'skip',
+          zorder: zFill,
+          fill: 'tozeroy',
+          fillcolor: fillLine,
+          line: { shape: 'linear', width: 1, color: fillLine },
+        } as Data);
+        out.push({
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: s.name,
+          x: months,
+          y,
+          visible: on,
+          showlegend: false,
+          connectgaps: false,
+          zorder: zMain,
+          line: {
+            shape: 'linear',
+            width: 2.4,
+            dash: st.dash === 'solid' ? undefined : st.dash,
+            color: st.color,
+          },
+          marker: { size: markerSize, line: { width: 0 }, color: st.color },
+          hoverinfo: 'none',
+        } as Data);
+        continue;
+      }
 
       out.push({
         type: 'scatter',
@@ -349,16 +341,16 @@ export function TrendChart(props: {
         visible: on,
         showlegend: false,
         connectgaps: false,
-        ...fillProps,
+        zorder: zMain,
         line: {
           shape: 'linear',
-          width: AREA_FILL_NAMES.has(s.name) ? 2.4 : 2,
+          width: 2,
           dash: st.dash === 'solid' ? undefined : st.dash,
           color: st.color,
         },
         marker: { size: markerSize, line: { width: 0 }, color: st.color },
         hoverinfo: 'none',
-      });
+      } as Data);
     }
     return out;
   }, [seriesData, props.logScale, visible]);
@@ -516,11 +508,11 @@ export function TrendChart(props: {
         ay: 0,
         xanchor: 'center' as const,
         yanchor: 'bottom' as const,
-        bgcolor: 'rgba(17,24,39,0.96)',
+        bgcolor: chartTheme.bubbleBg,
         bordercolor: border,
         borderwidth: 1.5,
         borderpad: 5,
-        font: { family: APP_FONT_FAMILY, size: 9, color: '#f9fafb' },
+        font: { family: APP_FONT_FAMILY, size: 9, color: chartTheme.bubbleFont },
         align: 'center' as const,
       };
     });
@@ -531,7 +523,7 @@ export function TrendChart(props: {
 
     const yaxis: Partial<Layout['yaxis']> = {
       type: props.logScale ? 'log' : 'linear',
-      gridcolor: '#374151',
+      gridcolor: chartTheme.grid,
       title: undefined,
       rangemode: props.logScale ? undefined : 'tozero',
       separatethousands: true,
@@ -545,18 +537,18 @@ export function TrendChart(props: {
     };
 
     const layout: Partial<Layout> = {
-      paper_bgcolor: '#1f2937',
-      plot_bgcolor: '#1f2937',
-      font: { color: '#e5e7eb', family: APP_FONT_FAMILY, size: 11 },
+      paper_bgcolor: chartTheme.paper,
+      plot_bgcolor: chartTheme.plot,
+      font: { color: chartTheme.font, family: APP_FONT_FAMILY, size: 11 },
       margin: { t: topMargin, r: 24, b: 56, l: 76 },
       showlegend: false,
       xaxis: {
         type: 'category',
         categoryorder: 'array',
         categoryarray: months,
-        gridcolor: '#374151',
+        gridcolor: chartTheme.grid,
         tickangle: -35,
-        title: { text: '월' },
+        title: { text: '월', font: { color: chartTheme.font } },
         tickmode: 'array',
         tickvals,
         ticktext,
@@ -588,9 +580,55 @@ export function TrendChart(props: {
       const monthMap = pcMoLookup.get(xv);
       if (!monthMap) return;
 
-      const makeBlock = (svc: string, opts?: { newOnly?: boolean }): HoverServiceData | null => {
+      const isOn = (name: TrendSeriesName) => visible[name] !== false;
+
+      const makeNeTutorBlock = (): HoverServiceData | null => {
+        const r = monthMap.get('NE Tutor');
+        if (!r) return null;
+        const showMau = isOn('NE Tutor MAU');
+        const showNew = isOn('NE Tutor 신규사용자');
+        if (!showMau && !showNew) return null;
+        return {
+          name: 'NE Tutor',
+          color: mauColorForService('NE Tutor'),
+          pcMau: r.pcMau,
+          moMau: r.moMau,
+          pcNew: r.pcNew,
+          moNew: r.moNew,
+          teacherNew: undefined,
+          hasMau: true,
+          newOnly: false,
+          showMauTooltip: showMau,
+          showNewTooltip: showNew,
+        };
+      };
+
+      const makeMemberBlock = (): HoverServiceData | null => {
+        const r = monthMap.get('통합회원');
+        if (!r || !isOn('통합회원')) return null;
+        return {
+          name: '통합회원',
+          color: mauColorForService('통합회원'),
+          pcMau: r.pcMau,
+          moMau: r.moMau,
+          pcNew: r.pcNew,
+          moNew: r.moNew,
+          teacherNew: r.teacherNew,
+          hasMau: false,
+          newOnly: true,
+          showMauTooltip: false,
+          showNewTooltip: true,
+        };
+      };
+
+      const makeSecondaryBlock = (svc: string, display: string): HoverServiceData | null => {
         const r = monthMap.get(svc);
         if (!r) return null;
+        const mauName = `${display} MAU` as TrendSeriesName;
+        const newName = `${display} 신규사용자` as TrendSeriesName;
+        const showMau = isOn(mauName);
+        const showNew = isOn(newName);
+        if (!showMau && !showNew) return null;
         return {
           name: svc,
           color: mauColorForService(svc),
@@ -598,22 +636,23 @@ export function TrendChart(props: {
           moMau: r.moMau,
           pcNew: r.pcNew,
           moNew: r.moNew,
-          teacherNew: svc === '통합회원' ? r.teacherNew : undefined,
-          hasMau: !opts?.newOnly,
-          newOnly: opts?.newOnly,
+          teacherNew: undefined,
+          hasMau: true,
+          newOnly: false,
+          showMauTooltip: showMau,
+          showNewTooltip: showNew,
         };
       };
 
       const primary: HoverServiceData[] = [];
-      const neTutorBlock = makeBlock('NE Tutor');
+      const neTutorBlock = makeNeTutorBlock();
       if (neTutorBlock) primary.push(neTutorBlock);
-      const memberBlock = makeBlock('통합회원', { newOnly: true });
+      const memberBlock = makeMemberBlock();
       if (memberBlock) primary.push(memberBlock);
 
-      const secondaryServices = ['NELT', '문법문제', '문법예문', '어휘출제', '클래스카드'];
-      const secondary = secondaryServices
-        .map((s) => makeBlock(s))
-        .filter((b): b is HoverServiceData => b != null);
+      const secondary = TREND_SERVICE_ROW.map((s) => makeSecondaryBlock(s.dataService, s.display)).filter(
+        (b): b is HoverServiceData => b != null,
+      );
 
       const shell = shellRef.current;
       if (!shell) return;
@@ -646,12 +685,13 @@ export function TrendChart(props: {
     pcMoLookup,
     props.showPC,
     props.showMobile,
+    chartTheme,
   ]);
 
   void props.services;
 
   return (
-    <div ref={shellRef} className="trend-chart-shell chart-box">
+    <div ref={shellRef} className="trend-chart-shell trend-chart-shell--flat">
       <div className="trend-chart-toolbar">
         <div className="trend-series-toggles" aria-label="표시할 시리즈 선택">
           <div className="trend-toggle-group trend-toggle-group--primary">
@@ -773,7 +813,9 @@ function HoverBlock({
   showMobile: boolean;
 }) {
   const both = showPC && showMobile;
-  const teacher = block.teacherNew ?? 0;
+  const teacher = block.teacherNew;
+  const showTeacherExtra =
+    block.newOnly && teacher != null && teacher > 0;
 
   const mauLine = () => {
     if (!block.hasMau) return null;
@@ -792,7 +834,7 @@ function HoverBlock({
     const label = block.newOnly ? '신규가입' : '신규사용자';
     if (both) {
       const extra =
-        block.newOnly && teacher > 0 ? (
+        showTeacherExtra ? (
           <span>
             {' '}
             · 교강사 {fmtIntKo(teacher)}명
@@ -815,16 +857,18 @@ function HoverBlock({
         <span className="trend-hover-swatch" style={{ background: block.color }} />
         <span>{block.name}</span>
       </div>
-      {block.hasMau && (
+      {block.hasMau && block.showMauTooltip && (
         <div className="trend-hover-row">
           <span className="trend-hover-label">MAU</span>
           <span className="trend-hover-value">{mauLine()}</span>
         </div>
       )}
-      <div className="trend-hover-row">
-        <span className="trend-hover-label">{block.newOnly ? '신규가입' : '신규사용자'}</span>
-        <span className="trend-hover-value">{newLine()}</span>
-      </div>
+      {block.showNewTooltip && (
+        <div className="trend-hover-row">
+          <span className="trend-hover-label">{block.newOnly ? '신규가입' : '신규사용자'}</span>
+          <span className="trend-hover-value">{newLine()}</span>
+        </div>
+      )}
     </div>
   );
 }

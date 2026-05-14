@@ -1,18 +1,21 @@
 import type { DeviceFilter, MonthlyByDeviceRow, MonthlyMetricRow, YearlyMetricRow } from '../types';
 
-function mauForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number {
+function mauForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number | null {
   if (device === 'PC') return r.pcMau;
   if (device === 'M') return r.moMau;
+  if (r.moMau == null || r.pcMau == null) return null;
   return r.pcMau + r.moMau;
 }
 
-function newForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number {
-  let base: number;
-  if (device === 'PC') base = r.pcNew;
-  else if (device === 'M') base = r.moNew;
-  else base = r.pcNew + r.moNew;
-  // 통합회원 시트의 '교강사' 행은 PC/Mobile에 속하지 않으므로 전체 보기에서만 합산
-  if (r.service === '통합회원' && device === 'all') base += r.teacherNew;
+function newForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number | null {
+  if (device === 'PC') return r.pcNew;
+  if (device === 'M') return r.moNew;
+  if (r.moNew == null || r.pcNew == null) return null;
+  let base = r.pcNew + r.moNew;
+  if (r.service === '통합회원' && device === 'all') {
+    if (r.teacherNew == null) return null;
+    base += r.teacherNew;
+  }
   return base;
 }
 
@@ -35,20 +38,33 @@ export function monthlyByDeviceToMonthly(
 
 /**
  * 월간 by-device 행 → 연도별 집계.
- * - MAU: 해당 연도 내 월별 MAU 중 최댓값 (피크)
- * - 신규사용자: 해당 연도 내 월별 합계
+ * - MAU: 해당 연도 내 월별 MAU 중 최댓값 (피크); 모바일 결측 월은 PC만 비교할 때만 반영
+ * - 신규사용자: 해당 연도 내 월별 합계(결측 월은 합산에서 제외)
  */
 export function monthlyByDeviceToYearly(
   rows: readonly MonthlyByDeviceRow[],
   device: DeviceFilter,
 ): YearlyMetricRow[] {
-  const map = new Map<string, { service: string; year: string; mau: number; newUsers: number }>();
+  const map = new Map<
+    string,
+    {
+      service: string;
+      year: string;
+      mau: number | null;
+      newUsers: number | null;
+    }
+  >();
   for (const r of rows) {
     const year = r.month.slice(0, 4);
     const key = `${r.service}|${year}`;
-    const prev = map.get(key) ?? { service: r.service, year, mau: 0, newUsers: 0 };
-    prev.mau = Math.max(prev.mau, mauForDevice(r, device));
-    prev.newUsers += newForDevice(r, device);
+    const prev = map.get(key) ?? { service: r.service, year, mau: null as number | null, newUsers: null };
+    const m = mauForDevice(r, device);
+    if (m != null) prev.mau = prev.mau == null ? m : Math.max(prev.mau, m);
+
+    const n = newForDevice(r, device);
+    if (n == null) prev.newUsers = null;
+    else prev.newUsers = prev.newUsers == null ? n : prev.newUsers + n;
+
     map.set(key, prev);
   }
   return [...map.values()]

@@ -359,13 +359,29 @@ export function pearson(a: number[], b: number[]): number | null {
   return num / Math.sqrt(da * db);
 }
 
-export function buildMonthlySeriesMap(monthly: MonthlyMetricRow[]): Map<string, Map<string, number>> {
-  const m = new Map<string, Map<string, number>>();
+export function buildMonthlySeriesMap(monthly: MonthlyMetricRow[]): Map<string, Map<string, number | null>> {
+  const m = new Map<string, Map<string, number | null>>();
   for (const r of monthly) {
     if (!m.has(r.service)) m.set(r.service, new Map());
     m.get(r.service)!.set(r.month, r.mauEstimate);
   }
   return m;
+}
+
+/** 월별 MAU에 null(결측)이 있으면 해당 월은 상관계수에서 제외 */
+function pearsonNullablePair(a: (number | null)[], b: (number | null)[]): number | null {
+  const ax: number[] = [];
+  const bx: number[] = [];
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const va = a[i];
+    const vb = b[i];
+    if (va == null || vb == null || !Number.isFinite(va) || !Number.isFinite(vb)) continue;
+    ax.push(va);
+    bx.push(vb);
+  }
+  if (ax.length < 3) return null;
+  return pearson(ax, bx);
 }
 
 export function correlationHeatmap(
@@ -381,13 +397,13 @@ export function correlationHeatmap(
   const months = [...monthSet].sort();
   const vectors = services.map((s) => {
     const sm = seriesMap.get(s) ?? new Map();
-    return months.map((mo) => sm.get(mo) ?? 0);
+    return months.map((mo) => sm.get(mo) ?? null);
   });
   const z: (number | null)[][] = [];
   for (let i = 0; i < services.length; i++) {
     const row: (number | null)[] = [];
     for (let j = 0; j < services.length; j++) {
-      row.push(pearson(vectors[i], vectors[j]));
+      row.push(pearsonNullablePair(vectors[i], vectors[j]));
     }
     z.push(row);
   }

@@ -1,11 +1,11 @@
 import { useState, type CSSProperties } from 'react';
-import { RAW_MENU_ITEMS } from '../data/gaSources';
+import { LAW_DATA_SUBMENU_ITEMS } from '../data/gaSources';
 
 const styles: Record<string, CSSProperties> = {
   aside: {
     width: 240,
     flexShrink: 0,
-    background: '#0b1220',
+    background: 'var(--panel)',
     borderRight: '1px solid var(--border)',
     display: 'flex',
     flexDirection: 'column',
@@ -16,7 +16,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontSize: '0.95rem',
     padding: '0 8px 12px',
-    color: '#e5e7eb',
+    color: 'var(--text)',
     borderBottom: '1px solid var(--border)',
     marginBottom: 4,
   },
@@ -56,13 +56,13 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'left',
     width: '100%',
   },
-  linkSub: {
-    padding: '8px 12px 8px 22px',
-    fontSize: '0.82rem',
+  linkSubNested: {
+    padding: '8px 12px 8px 32px',
+    fontSize: '0.8rem',
   },
   linkActive: {
-    background: 'rgba(59,130,246,0.15)',
-    color: '#93c5fd',
+    background: 'var(--sidebar-active-bg)',
+    color: 'var(--sidebar-active-fg)',
   },
 };
 
@@ -85,7 +85,7 @@ export function Sidebar(props: {
         }}
         onClick={props.onDashboard}
       >
-        통합화면 대시보드
+        통합 대시보드
       </button>
 
       <button
@@ -93,20 +93,20 @@ export function Sidebar(props: {
         style={styles.navHeadButton}
         onClick={() => setRawOpen((v) => !v)}
         aria-expanded={rawOpen}
-        aria-controls="raw-data-list"
+        aria-controls="law-data-list"
       >
-        <span>Raw Data</span>
+        <span>LAW DATA</span>
         <span style={styles.caret}>{rawOpen ? '▾' : '▸'}</span>
       </button>
       {rawOpen && (
-        <div id="raw-data-list">
-          {RAW_MENU_ITEMS.map((item) => (
+        <div id="law-data-list">
+          {LAW_DATA_SUBMENU_ITEMS.map((item) => (
             <button
               type="button"
               key={item.displayName}
               style={{
                 ...styles.link,
-                ...styles.linkSub,
+                ...styles.linkSubNested,
                 ...(props.mainView === 'raw' && props.activeRawFile === item.displayName
                   ? styles.linkActive
                   : {}),

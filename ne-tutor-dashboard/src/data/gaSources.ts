@@ -21,12 +21,14 @@ export const GA_DAILY_WORKBOOK_XLSX_NAME = 'NE Tutor_데이터 현황_260513.xls
 
 /**
  * 월간 통합 xlsx — 트렌드 차트(월별·년간)의 1순위 데이터 소스.
- * 시트: Tutor, 클카, 문뱅, NELT, 어출마, 교재자료, 문예, 통합회원, E-Book.
+ * 시트: Tutor, 클카, 문뱅, … 통합회원, E-Book 및 *PC law* / *M law* 보조 시트(무시), 교재별* 요약 시트(무시).
  */
-export const GA_MONTHLY_WORKBOOK_XLSX_NAME = 'NE Tutor 데이터 현황_260513_월간data.xlsx';
+export const GA_MONTHLY_WORKBOOK_XLSX_NAME = 'NE Tutor 데이터 현황_260514_v3.xlsx';
 
-/** E-Book Raw Data 메뉴 키 */
+/** E-Book Raw Data 메뉴 키 (월간 E-Book 클릭·이용자) */
 export const EBOOK_RAW_KEY = 'E-Book';
+/** 부가자료 Raw Data 메뉴 키 (월간 부가자료 전체·개별) */
+export const SUPPLEMENTARY_RAW_KEY = '부가자료';
 /** 주문별현황 Raw Data 메뉴 키 */
 export const ORDERS_RAW_KEY = '주문별현황';
 
@@ -35,23 +37,24 @@ export const ORDERS_XLSX_NAME = '주문별현황2021~2026.xlsx';
 export type GaHtmlSource = (typeof GA_HTML_SOURCES)[number];
 
 /**
- * Raw Data 사이드 메뉴 항목.
- * - displayName: 사이드 메뉴 / 페이지 타이틀에 표시되는 이름 (사용자 친화적 풀네임)
- * - dataService:
- *    · 일반 서비스 행: 월간 xlsx의 MonthlyByDeviceRow.service 키
- *    · 'E-Book': ebookMonthly 데이터 사용
- *    · '주문별현황': orders 데이터 사용
+ * LAW DATA 사이드 하위 메뉴.
+ * - displayName: 사이드바·원시 패널 제목
+ * - dataService: 월간 행의 service 키, 또는 EBOOK_RAW_KEY / SUPPLEMENTARY_RAW_KEY / ORDERS_RAW_KEY
  */
-export const RAW_MENU_ITEMS: readonly { displayName: string; dataService: string }[] = [
-  { displayName: 'NE Tutor', dataService: 'NE Tutor' },
+export const LAW_DATA_SUBMENU_ITEMS: readonly { displayName: string; dataService: string }[] = [
+  { displayName: 'Tutor', dataService: 'NE Tutor' },
   { displayName: '통합회원', dataService: '통합회원' },
   { displayName: 'NELT', dataService: 'NELT' },
   { displayName: '문법문제뱅크', dataService: '문법문제' },
   { displayName: '문법예문검색', dataService: '문법예문' },
   { displayName: '어휘출제마법사', dataService: '어휘출제' },
   { displayName: '클래스카드', dataService: '클래스카드' },
+  { displayName: '교재자료', dataService: '교재자료' },
   { displayName: EBOOK_RAW_KEY, dataService: EBOOK_RAW_KEY },
+  { displayName: SUPPLEMENTARY_RAW_KEY, dataService: SUPPLEMENTARY_RAW_KEY },
   { displayName: ORDERS_RAW_KEY, dataService: ORDERS_RAW_KEY },
 ] as const;
 
-export type RawMenuItem = (typeof RAW_MENU_ITEMS)[number];
+export const RAW_MENU_ITEMS = LAW_DATA_SUBMENU_ITEMS;
+
+export type RawMenuItem = (typeof LAW_DATA_SUBMENU_ITEMS)[number];

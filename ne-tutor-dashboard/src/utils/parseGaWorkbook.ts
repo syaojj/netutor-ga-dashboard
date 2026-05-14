@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { DailyMetricRow, EbookMonthlyRow } from '../types';
+import { parseEbookWideSheet, parseSpreadsheetMetricOrNull } from './parseGaMonthlyWorkbook';
 import { parseYyyymmdd } from './dateUtil';
 import { mergeRowsByDate } from './parseHtmlSheets';
 
@@ -136,7 +137,7 @@ function findEbookHeaderRow(
   return null;
 }
 
-function parseEbookSheet(matrix: unknown[][]): { rows: EbookMonthlyRow[]; warnings: string[] } {
+function parseLegacyEbookSheet(matrix: unknown[][]): { rows: EbookMonthlyRow[]; warnings: string[] } {
   const warnings: string[] = [];
   const head = findEbookHeaderRow(matrix);
   if (!head) {
@@ -151,12 +152,12 @@ function parseEbookSheet(matrix: unknown[][]): { rows: EbookMonthlyRow[]; warnin
     const mo = Number(String(row[head.cMonth] ?? '').trim());
     if (!Number.isFinite(y) || y < 2000 || y > 2100) continue;
     if (!Number.isFinite(mo) || mo < 1 || mo > 12) continue;
-    const clicks = parseNumber(row[head.cClicks]);
+    const clk = parseSpreadsheetMetricOrNull(row[head.cClicks]);
     out.push({
       year: y,
       month: mo,
       monthKey: `${y}-${String(mo).padStart(2, '0')}`,
-      clicks: Math.round(clicks),
+      clicks: clk,
     });
   }
   out.sort((a, b) => a.monthKey.localeCompare(b.monthKey));
@@ -186,9 +187,15 @@ export function parseGaWorkbook(buf: ArrayBuffer): {
         defval: '',
         raw: false,
       }) as unknown[][];
-      const { rows, warnings: w } = parseEbookSheet(matrix);
-      ebookMonthly = rows;
-      warnings.push(...w);
+      const wide = parseEbookWideSheet(matrix);
+      if (wide.rows.length > 0) {
+        ebookMonthly = wide.rows;
+        warnings.push(...wide.warnings);
+      } else {
+        const { rows, warnings: w } = parseLegacyEbookSheet(matrix);
+        ebookMonthly = rows;
+        warnings.push(...w);
+      }
       continue;
     }
     const meta = parseGaSheetTabName(sheetName);

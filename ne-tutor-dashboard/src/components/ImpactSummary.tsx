@@ -1,23 +1,8 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import type { EcosystemEvent, MonthlyByDeviceRow } from '../types';
-import { toMonthKey } from '../utils/dateUtil';
+import { toMonthKey, addCalendarMonths } from '../utils/dateUtil';
 
 const NE_TUTOR = 'NE Tutor';
-
-/** YYYY-MM 에 달력 delta 개월을 더함 */
-function addCalendarMonths(ym: string, delta: number): string {
-  let y = Number(ym.slice(0, 4));
-  let m = Number(ym.slice(5, 7)) - 1 + delta;
-  while (m < 0) {
-    m += 12;
-    y -= 1;
-  }
-  while (m >= 12) {
-    m -= 12;
-    y += 1;
-  }
-  return `${y}-${String(m + 1).padStart(2, '0')}`;
-}
 
 function fmtPct(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return '-';
@@ -46,15 +31,15 @@ function PctCell({ value }: { value: number | null }) {
 function eventTypeBadge(type: EcosystemEvent['type']): { label: string; bg: string; fg: string; border: string } {
   switch (type) {
     case 'open':
-      return { label: '오픈', bg: 'rgba(74, 222, 128, 0.15)', fg: '#4ade80', border: '#4ade80' };
+      return { label: '오픈', bg: 'rgba(22, 163, 74, 0.12)', fg: '#15803d', border: '#22c55e' };
     case 'end':
-      return { label: '종료', bg: 'rgba(248, 113, 113, 0.15)', fg: '#f87171', border: '#f87171' };
+      return { label: '종료', bg: 'rgba(220, 38, 38, 0.1)', fg: '#b91c1c', border: '#ef4444' };
     case 'reform':
-      return { label: '개편', bg: 'rgba(192, 132, 252, 0.15)', fg: '#c084fc', border: '#c084fc' };
+      return { label: '개편', bg: 'rgba(147, 51, 234, 0.1)', fg: '#6b21a8', border: '#a855f7' };
     case 'launch':
-      return { label: '출시', bg: 'rgba(96, 165, 250, 0.15)', fg: '#60a5fa', border: '#60a5fa' };
+      return { label: '출시', bg: 'rgba(37, 99, 235, 0.1)', fg: '#1d4ed8', border: '#3b82f6' };
     default:
-      return { label: type || '기타', bg: 'rgba(148,163,184,0.15)', fg: '#cbd5e1', border: '#cbd5e1' };
+      return { label: type || '기타', bg: 'rgba(100,116,139,0.12)', fg: '#475569', border: '#94a3b8' };
   }
 }
 
@@ -73,92 +58,83 @@ const badgeStyle = (b: ReturnType<typeof eventTypeBadge>): CSSProperties => ({
 
 const pct = (a: number, b: number) => (b === 0 ? null : ((a - b) / b) * 100);
 
-interface DeviceWindowResult {
-  newPct: number | null;
+/** 창(연속 월)의 첫 달 대비 마지막 달 증감율 */
+interface SpanEndpointGrowth {
   mauPct: number | null;
+  newPct: number | null;
 }
 
-function newForDevices(r: MonthlyByDeviceRow, includePC: boolean, includeMobile: boolean): number {
+function newForDevices(r: MonthlyByDeviceRow, includePC: boolean, includeMobile: boolean): number | null {
+  if (includePC && r.pcNew == null) return null;
+  if (includeMobile && r.moNew == null) return null;
   let v = 0;
-  if (includePC) v += r.pcNew;
-  if (includeMobile) v += r.moNew;
+  if (includePC) v += r.pcNew!;
+  if (includeMobile) v += r.moNew!;
   return v;
 }
 
-function mauForDevices(r: MonthlyByDeviceRow, includePC: boolean, includeMobile: boolean): number {
+function mauForDevices(r: MonthlyByDeviceRow, includePC: boolean, includeMobile: boolean): number | null {
+  if (includePC && r.pcMau == null) return null;
+  if (includeMobile && r.moMau == null) return null;
   let v = 0;
-  if (includePC) v += r.pcMau;
-  if (includeMobile) v += r.moMau;
+  if (includePC) v += r.pcMau!;
+  if (includeMobile) v += r.moMau!;
   return v;
 }
 
-/**
- * 월간 통합(NE Tutor)에서 anchor가 속한 월(M) 기준,
- * - 이전 beforeSpan개의 달(직전 달부터) vs
- * - 이후 afterSpan개의 달(M부터)
- * 신규는 월별 합, MAU는 해당 월들의 산술평균으로 비교.
- */
-function aggregateNeTutorWindow(
-  monthKeys: string[],
+function spanEndpointGrowth(
   byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
+  monthKeys: string[],
   includePC: boolean,
   includeMobile: boolean,
-): { newSum: number; mauAvg: number | null } {
-  if (!includePC && !includeMobile) return { newSum: 0, mauAvg: null };
-  let newSum = 0;
-  const mauSamples: number[] = [];
-  for (const mo of monthKeys) {
-    const r = byMonth.get(mo)?.get(NE_TUTOR);
-    if (!r) continue;
-    newSum += newForDevices(r, includePC, includeMobile);
-    const mau = mauForDevices(r, includePC, includeMobile);
-    mauSamples.push(mau);
-  }
-  const mauAvg =
-    mauSamples.length > 0 ? mauSamples.reduce((a, b) => a + b, 0) / mauSamples.length : null;
-  return { newSum, mauAvg };
+): SpanEndpointGrowth {
+  if (!includePC && !includeMobile || monthKeys.length < 2) return { mauPct: null, newPct: null };
+  const firstM = monthKeys[0];
+  const lastM = monthKeys[monthKeys.length - 1];
+  const rFirst = byMonth.get(firstM)?.get(NE_TUTOR);
+  const rLast = byMonth.get(lastM)?.get(NE_TUTOR);
+  if (!rFirst || !rLast) return { mauPct: null, newPct: null };
+  const mauFirst = mauForDevices(rFirst, includePC, includeMobile);
+  const mauLast = mauForDevices(rLast, includePC, includeMobile);
+  const newFirst = newForDevices(rFirst, includePC, includeMobile);
+  const newLast = newForDevices(rLast, includePC, includeMobile);
+  return {
+    mauPct: mauFirst != null && mauLast != null ? pct(mauLast, mauFirst) : null,
+    newPct: newFirst != null && newLast != null ? pct(newLast, newFirst) : null,
+  };
 }
 
-function compareMonthWindows(
+function anchorThreeMonthWindows(
   byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
   anchorDate: string,
-  beforeSpan: number,
-  afterSpan: number,
   includePC: boolean,
   includeMobile: boolean,
-): DeviceWindowResult {
-  if (!includePC && !includeMobile) return { newPct: null, mauPct: null };
-
+): { before: SpanEndpointGrowth; after: SpanEndpointGrowth } {
   const M = toMonthKey(anchorDate);
   const beforeMonths: string[] = [];
-  for (let k = beforeSpan; k >= 1; k--) {
-    beforeMonths.push(addCalendarMonths(M, -k));
-  }
+  for (let k = 3; k >= 1; k--) beforeMonths.push(addCalendarMonths(M, -k));
   const afterMonths: string[] = [];
-  for (let k = 0; k < afterSpan; k++) {
-    afterMonths.push(addCalendarMonths(M, k));
-  }
-
-  const before = aggregateNeTutorWindow(beforeMonths, byMonth, includePC, includeMobile);
-  const after = aggregateNeTutorWindow(afterMonths, byMonth, includePC, includeMobile);
-
-  const newPct = pct(after.newSum, before.newSum);
-  const mauB = before.mauAvg;
-  const mauA = after.mauAvg;
-  const mauPct = mauA != null && mauB != null ? pct(mauA, mauB) : null;
-
-  return { newPct, mauPct };
+  for (let k = 0; k < 3; k++) afterMonths.push(addCalendarMonths(M, k));
+  return {
+    before: spanEndpointGrowth(byMonth, beforeMonths, includePC, includeMobile),
+    after: spanEndpointGrowth(byMonth, afterMonths, includePC, includeMobile),
+  };
 }
 
 /**
- * 주요 서비스 변화 추이
- * - 이벤트 anchor가 속한 달(M) 기준, 월간 통합 xlsx에서 읽은 NE Tutor 월별 행으로 비교
- * - 1개월: 직전 1달 vs 이벤트 달(M) / 3개월: 직전 3달 vs M·M+1·M+2
- * - PC/Mobile: 선택 디바이스만 합산(신규), MAU는 월별 합(선택 디바이스)의 평균
+ * 주요 변경 추이
+ * - 이벤트 기준월(M) 기준, 월간 통합(xlsx) NE Tutor 행으로 직전·직후 3개월 증감율
  */
 export function ImpactSummary(props: {
   monthlyByDevice: readonly MonthlyByDeviceRow[];
   events: readonly EcosystemEvent[];
+  /** 전년 동월 비교와 동일한 검색 구간 — 기준월이 이 안에 있는 이벤트만 표시 */
+  rangeStart: string;
+  rangeEnd: string;
+  /** true면 외부 카드 안에 넣을 때 — 별도 card-like 테두리 없음 */
+  embedded?: boolean;
+  /** true면 내부 제목(h3) 숨김 — 상위 섹션에서 제목을 붙일 때 */
+  suppressTitle?: boolean;
 }) {
   const [includePC, setIncludePC] = useState(true);
   const [includeMobile, setIncludeMobile] = useState(false);
@@ -172,13 +148,26 @@ export function ImpactSummary(props: {
     return map;
   }, [props.monthlyByDevice]);
 
-  const rows = useMemo(() => {
-    return props.events.map((ev) => {
-      const w1 = compareMonthWindows(byMonth, ev.anchorDate, 1, 1, includePC, includeMobile);
-      const w3 = compareMonthWindows(byMonth, ev.anchorDate, 3, 3, includePC, includeMobile);
-      return { ev, w1, w3 };
+  const eventsInRange = useMemo(() => {
+    const lo = props.rangeStart.slice(0, 7);
+    const hi = props.rangeEnd.slice(0, 7);
+    return props.events.filter((ev) => {
+      const mk = toMonthKey(ev.anchorDate);
+      return mk >= lo && mk <= hi;
     });
-  }, [byMonth, props.events, includePC, includeMobile]);
+  }, [props.events, props.rangeStart, props.rangeEnd]);
+
+  const rows = useMemo(() => {
+    return eventsInRange.map((ev) => {
+      const { before, after } = anchorThreeMonthWindows(
+        byMonth,
+        ev.anchorDate,
+        includePC,
+        includeMobile,
+      );
+      return { ev, before, after };
+    });
+  }, [byMonth, eventsInRange, includePC, includeMobile]);
 
   const togglePC = (v: boolean) => {
     if (!v && !includeMobile) return;
@@ -189,10 +178,16 @@ export function ImpactSummary(props: {
     setIncludeMobile(v);
   };
 
+  const rootClass = props.embedded
+    ? 'impact-summary impact-summary--embedded'
+    : 'impact-summary card-like';
+
   return (
-    <div className="impact-summary card-like">
-      <div className="impact-summary-head">
-        <h3 className="impact-summary-title">주요 서비스 변화 추이</h3>
+    <div className={rootClass}>
+      <div
+        className={`impact-summary-head${props.suppressTitle ? ' impact-summary-head--toolbar-only' : ''}`}
+      >
+        {!props.suppressTitle && <h3 className="impact-summary-title">주요 변경 추이</h3>}
         <div className="impact-summary-filters" aria-label="디바이스 필터">
           <label className="impact-summary-filter">
             <input
@@ -216,60 +211,77 @@ export function ImpactSummary(props: {
       <div className="table-wrap impact-summary-body">
         <table className="data impact-summary-table">
           <colgroup>
-            <col style={{ width: 64 }} />
-            <col />
-            <col style={{ width: 70 }} />
-            <col style={{ width: 70 }} />
-            <col style={{ width: 70 }} />
-            <col style={{ width: 70 }} />
+            <col className="impact-col-pct" />
+            <col className="impact-col-pct" />
+            <col className="impact-col-service" />
+            <col className="impact-col-pct" />
+            <col className="impact-col-pct" />
           </colgroup>
           <thead>
             <tr>
-              <th rowSpan={2}>구분</th>
-              <th rowSpan={2}>서비스</th>
-              <th colSpan={2} className="impact-grouphead">신규사용자 증감율</th>
-              <th colSpan={2} className="impact-grouphead">MAU 증감율</th>
-            </tr>
-            <tr>
-              <th className="impact-subhead">1개월</th>
-              <th className="impact-subhead">3개월</th>
-              <th className="impact-subhead">1개월</th>
-              <th className="impact-subhead">3개월</th>
+              <th scope="col" className="impact-th-metric">
+                <span className="impact-th-main">MAU</span>
+                <span className="impact-th-sub">직전 3개월 증감율</span>
+              </th>
+              <th scope="col" className="impact-th-metric">
+                <span className="impact-th-main">신규</span>
+                <span className="impact-th-sub">직전 3개월 증감율</span>
+              </th>
+              <th scope="col" className="impact-th-service">
+                이벤트 · 기준일
+              </th>
+              <th scope="col" className="impact-th-metric">
+                <span className="impact-th-main">MAU</span>
+                <span className="impact-th-sub">직후 3개월 증감율</span>
+              </th>
+              <th scope="col" className="impact-th-metric">
+                <span className="impact-th-main">신규</span>
+                <span className="impact-th-sub">직후 3개월 증감율</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ ev, w1, w3 }) => {
-              const badge = eventTypeBadge(ev.type);
-              return (
-                <tr key={ev.id}>
-                  <td>
-                    <span style={badgeStyle(badge)}>{badge.label}</span>
-                  </td>
-                  <td>
-                    <div className="impact-event-name">{ev.name}</div>
-                    <div className="impact-event-date">{ev.anchorDate}</div>
-                  </td>
-                  <td className="impact-pct-cell">
-                    <PctCell value={w1.newPct} />
-                  </td>
-                  <td className="impact-pct-cell">
-                    <PctCell value={w3.newPct} />
-                  </td>
-                  <td className="impact-pct-cell">
-                    <PctCell value={w1.mauPct} />
-                  </td>
-                  <td className="impact-pct-cell">
-                    <PctCell value={w3.mauPct} />
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="impact-empty-row">
+                  선택 구간(월)에 기준일이 들어오는 이벤트가 없습니다.
+                </td>
+              </tr>
+            ) : (
+              rows.map(({ ev, before, after }) => {
+                const badge = eventTypeBadge(ev.type);
+                return (
+                  <tr key={ev.id}>
+                    <td className="impact-pct-cell">
+                      <PctCell value={before.mauPct} />
+                    </td>
+                    <td className="impact-pct-cell">
+                      <PctCell value={before.newPct} />
+                    </td>
+                    <td className="impact-service-cell">
+                      <div className="impact-service-head">
+                        <span style={badgeStyle(badge)}>{badge.label}</span>
+                      </div>
+                      <div className="impact-event-name">{ev.name}</div>
+                      <div className="impact-event-date">{ev.anchorDate}</div>
+                    </td>
+                    <td className="impact-pct-cell">
+                      <PctCell value={after.mauPct} />
+                    </td>
+                    <td className="impact-pct-cell">
+                      <PctCell value={after.newPct} />
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
       <p className="impact-summary-footnote">
-        NE Tutor는 <strong>월간 통합 데이터</strong>(xlsx) 기준입니다. 1개월: 이벤트 달(M) 대비 직전 1달 · 3개월: M~M+2
-        대비 직전 3달(신규=월 합, MAU=월 평균).
+        NE Tutor 지표는 <strong>월간 통합</strong>(xlsx) 기준입니다. 표에는 위에서 고른 월 구간에 기준일이 포함된
+        이벤트만 나옵니다. 직전 3개월(M-3~M-1)·직후 3개월(M~M+2) 각각 구간의 <strong>첫 달 대비 마지막 달</strong>{' '}
+        증감율입니다.
       </p>
     </div>
   );

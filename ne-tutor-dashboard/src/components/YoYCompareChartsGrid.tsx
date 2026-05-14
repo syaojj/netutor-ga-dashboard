@@ -1,13 +1,29 @@
 /**
- * 전년 동기 비교: 검색 기간의 각 월에 대해 전년 동월 값을 같은 X축에 겹쳐 표시.
- * PC MAU / Mobile MAU / PC 신규 / Mobile 신규 — 2열×2행.
+ * 전년 동월 비교: 검색 구간의 각 월과 전년 동월을 한 축에 겹쳐 표시.
+ * PC·Mobile 각각 MAU(좌 Y) + 신규(우 Y). 서비스 단일 선택.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
 import type { MonthlyByDeviceRow } from '../types';
-import { APP_FONT_FAMILY, PLOTLY_HOVERLABEL } from '../fonts';
-import { SERIES_STYLE, TREND_SERVICE_ROW, type TrendSeriesName } from './TrendChart';
+import { APP_FONT_FAMILY } from '../fonts';
+import { useTheme } from '../context/ThemeContext';
+import { TREND_SERVICE_ROW } from './trendSeriesConfig';
+
+/** 전년 동월 비교: 서비스와 무관하게 4개 시리즈 색 고정 (MAU/신규 × 당월/전년) */
+const YOY_METRIC_COLORS = {
+  mauCurrent: '#3b82f6',
+  mauPrior: '#22d3ee',
+  newCurrent: '#fb923c',
+  newPrior: '#c084fc',
+} as const;
+
+const YOY_LEGEND_CHIPS = [
+  { key: 'mau-c', label: 'MAU 당월', color: YOY_METRIC_COLORS.mauCurrent },
+  { key: 'mau-p', label: 'MAU 전년 동월', color: YOY_METRIC_COLORS.mauPrior },
+  { key: 'new-c', label: '신규 당월', color: YOY_METRIC_COLORS.newCurrent },
+  { key: 'new-p', label: '신규 전년 동월', color: YOY_METRIC_COLORS.newPrior },
+] as const;
 
 function monthsInRange(rangeStart: string, rangeEnd: string): string[] {
   const start = rangeStart.slice(0, 7);
@@ -41,14 +57,6 @@ function formatHoverMetric(v: number | null): string {
 
 function formatMonthTick(mo: string): string {
   return `${mo.slice(0, 4)}.${mo.slice(5, 7)}`;
-}
-
-function hexToRgba(hex: string, a: number): string {
-  const m = hex.replace('#', '');
-  const r = parseInt(m.slice(0, 2), 16);
-  const g = parseInt(m.slice(2, 4), 16);
-  const b = parseInt(m.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${a})`;
 }
 
 function buildLogYAxisTicks(ymin: number, ymax: number): { tickvals: number[]; ticktext: string[] } {
@@ -86,56 +94,132 @@ function buildLinearYAxisTicks(ymin: number, ymax: number): Partial<Layout['yaxi
   };
 }
 
-type PanelKind = 'pcMau' | 'moMau' | 'pcNew' | 'moNew';
-
 const TOGGLE_SERVICES: readonly string[] = [
   'NE Tutor',
   '통합회원',
   ...TREND_SERVICE_ROW.map((s) => s.dataService),
 ];
 
-function mauSeriesKey(svc: string): TrendSeriesName {
-  if (svc === 'NE Tutor') return 'NE Tutor MAU';
-  return `${svc} MAU` as TrendSeriesName;
-}
+type DeviceSide = 'pc' | 'mo';
 
-function newSeriesKey(svc: string): TrendSeriesName {
-  if (svc === 'NE Tutor') return 'NE Tutor 신규사용자';
-  if (svc === '통합회원') return '통합회원';
-  return `${svc} 신규사용자` as TrendSeriesName;
-}
-
-function seriesColor(panel: PanelKind, svc: string): string {
-  const isMau = panel === 'pcMau' || panel === 'moMau';
-  const key = isMau ? mauSeriesKey(svc) : newSeriesKey(svc);
-  return SERIES_STYLE[key]?.color ?? '#94a3b8';
-}
-
-function readMetric(row: MonthlyByDeviceRow | undefined, panel: PanelKind): number | null {
-  if (!row) return null;
-  switch (panel) {
-    case 'pcMau':
-      return row.pcMau;
-    case 'moMau':
-      return row.moMau;
-    case 'pcNew':
-      return row.pcNew;
-    case 'moNew':
-      return row.moNew;
-    default:
-      return null;
+function readMauNew(
+  row: MonthlyByDeviceRow | undefined,
+  device: DeviceSide,
+  svc: string,
+): { mau: number | null; neu: number | null } {
+  if (!row) return { mau: null, neu: null };
+  const mau = device === 'pc' ? row.pcMau : row.moMau;
+  let neu: number | null = device === 'pc' ? row.pcNew : row.moNew;
+  if (device === 'pc' && svc === '통합회원') {
+    if (row.pcNew == null || row.teacherNew == null) neu = null;
+    else neu = row.pcNew + row.teacherNew;
   }
+  return { mau, neu };
 }
 
-function servicesForPanel(panel: PanelKind): string[] {
-  if (panel === 'pcMau' || panel === 'moMau') {
-    return ['NE Tutor', ...TREND_SERVICE_ROW.map((s) => s.dataService)];
+function rowHasServiceEntry(row: MonthlyByDeviceRow | undefined): boolean {
+  return row != null;
+}
+
+function servicesWithDataInRange(
+  byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
+  months: string[],
+): string[] {
+  if (months.length === 0) return [...TOGGLE_SERVICES];
+  return TOGGLE_SERVICES.filter((svc) =>
+    months.some((m) => rowHasServiceEntry(byMonth.get(m)?.get(svc))),
+  );
+}
+
+type YoyHoverTip = { device: DeviceSide; idx: number; left: number; top: number };
+
+function YoyHoverCard({
+  tip,
+  months,
+  selectedService,
+  byMonth,
+  logScale,
+  containerEl,
+}: {
+  tip: YoyHoverTip;
+  months: string[];
+  selectedService: string;
+  byMonth: Map<string, Map<string, MonthlyByDeviceRow>>;
+  logScale: boolean;
+  containerEl: HTMLDivElement | null;
+}) {
+  const m = months[tip.idx];
+  if (!m) return null;
+  const pm = priorYearMonth(m);
+  const svc = selectedService;
+  const curRow = byMonth.get(m)?.get(svc);
+  const prevRow = byMonth.get(pm)?.get(svc);
+  let { mau: mauC, neu: newC } = readMauNew(curRow, tip.device, svc);
+  let { mau: mauP, neu: newP } = readMauNew(prevRow, tip.device, svc);
+  if (logScale) {
+    mauC = mauC != null && Number.isFinite(mauC) && mauC > 0 ? mauC : null;
+    mauP = mauP != null && Number.isFinite(mauP) && mauP > 0 ? mauP : null;
+    newC = newC != null && Number.isFinite(newC) && newC > 0 ? newC : null;
+    newP = newP != null && Number.isFinite(newP) && newP > 0 ? newP : null;
+  } else {
+    mauC = mauC != null && Number.isFinite(mauC) ? mauC : null;
+    mauP = mauP != null && Number.isFinite(mauP) ? mauP : null;
+    newC = newC != null && Number.isFinite(newC) ? newC : null;
+    newP = newP != null && Number.isFinite(newP) ? newP : null;
   }
-  return ['NE Tutor', '통합회원', ...TREND_SERVICE_ROW.map((s) => s.dataService)];
+
+  const deviceLabel = tip.device === 'pc' ? 'PC' : 'Mobile';
+  const svcTitle = svc === '통합회원' ? `${svc} (신규)` : svc;
+  const items: { title: string; monthRef: string; val: number | null; color: string }[] = [
+    { title: 'MAU · 당월', monthRef: m, val: mauC, color: YOY_METRIC_COLORS.mauCurrent },
+    { title: 'MAU · 전년 동월', monthRef: pm, val: mauP, color: YOY_METRIC_COLORS.mauPrior },
+    { title: '신규 · 당월', monthRef: m, val: newC, color: YOY_METRIC_COLORS.newCurrent },
+    { title: '신규 · 전년 동월', monthRef: pm, val: newP, color: YOY_METRIC_COLORS.newPrior },
+  ];
+
+  const rect = containerEl?.getBoundingClientRect();
+  const containerW = rect?.width ?? 400;
+  const estW = 300;
+  let left = tip.left + 14;
+  const top = Math.max(8, Math.min(tip.top - 8, (rect?.height ?? 400) - 24));
+  if (left + estW > containerW - 8) left = Math.max(8, tip.left - estW - 14);
+
+  return (
+    <div
+      className="trend-hover-card yoy-hover-card"
+      style={{ position: 'absolute', left, top, zIndex: 90, pointerEvents: 'none' }}
+      role="tooltip"
+    >
+      <div className="trend-hover-title">{formatMonthTick(m)}</div>
+      <div className="yoy-hover-subtitle">
+        {svcTitle} · {deviceLabel}
+      </div>
+      <div className="yoy-hover-metrics">
+        {items.map((it) => (
+          <div key={it.title} className="yoy-hover-metric-row">
+            <span className="yoy-hover-metric-swatch" style={{ background: it.color }} />
+            <div className="yoy-hover-metric-body">
+              <div className="yoy-hover-metric-title">{it.title}</div>
+              <div className="yoy-hover-metric-meta">{formatMonthTick(it.monthRef)}</div>
+            </div>
+            <div className="yoy-hover-metric-value">
+              {it.val != null && Number.isFinite(it.val) ? `${formatHoverMetric(it.val)}명` : '—'}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function initialVisible(): Record<string, boolean> {
-  return Object.fromEntries(TOGGLE_SERVICES.map((s) => [s, true]));
+interface DualAxisPayload {
+  title: string;
+  device: DeviceSide;
+  traces: Data[];
+  yMin: number;
+  yMax: number;
+  y2Min: number;
+  y2Max: number;
 }
 
 export function YoYCompareChartsGrid(props: {
@@ -144,14 +228,14 @@ export function YoYCompareChartsGrid(props: {
   rangeEnd: string;
   logScale: boolean;
 }) {
+  const { chartTheme } = useTheme();
   const shellRef = useRef<HTMLDivElement>(null);
   const plotRef0 = useRef<HTMLDivElement>(null);
   const plotRef1 = useRef<HTMLDivElement>(null);
-  const plotRef2 = useRef<HTMLDivElement>(null);
-  const plotRef3 = useRef<HTMLDivElement>(null);
-  const plotRefs = [plotRef0, plotRef1, plotRef2, plotRef3] as const;
-  const [visible, setVisible] = useState<Record<string, boolean>>(initialVisible);
+  const plotRefs = [plotRef0, plotRef1] as const;
+  const [selectedService, setSelectedService] = useState<string>('NE Tutor');
   const [isFs, setIsFs] = useState(false);
+  const [yoyHoverTip, setYoyHoverTip] = useState<YoyHoverTip | null>(null);
 
   const months = useMemo(
     () => monthsInRange(props.rangeStart, props.rangeEnd),
@@ -167,111 +251,173 @@ export function YoYCompareChartsGrid(props: {
     return map;
   }, [props.monthlyByDevice]);
 
-  const panelDefs: { kind: PanelKind; title: string }[] = useMemo(
-    () => [
-      { kind: 'pcMau', title: 'PC MAU' },
-      { kind: 'moMau', title: 'Mobile MAU' },
-      { kind: 'pcNew', title: 'PC 신규사용자' },
-      { kind: 'moNew', title: 'Mobile 신규사용자' },
-    ],
-    [],
-  );
+  const activeServices = useMemo(() => servicesWithDataInRange(byMonth, months), [byMonth, months]);
 
-  const buildPanel = useCallback(
-    (panel: PanelKind): { traces: Data[]; yMin: number; yMax: number } => {
-      const svcs = servicesForPanel(panel);
+  useEffect(() => {
+    if (activeServices.length === 0) return;
+    if (!activeServices.includes(selectedService)) {
+      setSelectedService(activeServices[0]);
+    }
+  }, [activeServices, selectedService]);
+
+  useEffect(() => {
+    setYoyHoverTip(null);
+  }, [months, selectedService, props.rangeStart, props.rangeEnd]);
+
+  const buildDualPanel = useCallback(
+    (device: DeviceSide): DualAxisPayload => {
+      const svc = selectedService;
+      const title = device === 'pc' ? 'PC (MAU / 신규)' : 'Mobile (MAU / 신규)';
       const traces: Data[] = [];
       let yMax = 10;
       let yMin = 0;
+      let y2Max = 10;
+      let y2Min = 0;
       const nMonths = months.length;
-      const markerSize = nMonths <= 1 ? 10 : nMonths <= 6 ? 7 : 5;
+      const markerSize = nMonths <= 1 ? 9 : nMonths <= 6 ? 6 : 4;
+      const cMauC = YOY_METRIC_COLORS.mauCurrent;
+      const cMauP = YOY_METRIC_COLORS.mauPrior;
+      const cNewC = YOY_METRIC_COLORS.newCurrent;
+      const cNewP = YOY_METRIC_COLORS.newPrior;
 
-      for (const svc of svcs) {
-        if (visible[svc] === false) continue;
-        const yCurr: (number | null)[] = [];
-        const yPrior: (number | null)[] = [];
-        for (const m of months) {
-          const cur = readMetric(byMonth.get(m)?.get(svc), panel);
-          const pm = priorYearMonth(m);
-          const prev = readMetric(byMonth.get(pm)?.get(svc), panel);
-          let c = cur;
-          let p = prev;
+      const collect = (
+        vals: (number | null)[],
+        axis: 'y' | 'y2',
+      ) => {
+        for (const v of vals) {
+          if (v == null || !Number.isFinite(v)) continue;
           if (props.logScale) {
-            c = c != null && Number.isFinite(c) && c > 0 ? c : null;
-            p = p != null && Number.isFinite(p) && p > 0 ? p : null;
-          } else {
-            c = c != null && Number.isFinite(c) ? c : null;
-            p = p != null && Number.isFinite(p) ? p : null;
-          }
-          yCurr.push(c);
-          yPrior.push(p);
-          for (const v of [c, p]) {
-            if (v != null && Number.isFinite(v) && v > 0) {
+            if (v <= 0) continue;
+            if (axis === 'y') {
               yMax = Math.max(yMax, v);
               yMin = yMin === 0 ? v : Math.min(yMin, v);
+            } else {
+              y2Max = Math.max(y2Max, v);
+              y2Min = y2Min === 0 ? v : Math.min(y2Min, v);
+            }
+          } else {
+            if (axis === 'y') {
+              yMax = Math.max(yMax, v);
+              yMin = Math.min(yMin, v);
+            } else {
+              y2Max = Math.max(y2Max, v);
+              y2Min = Math.min(y2Min, v);
             }
           }
         }
-        const col = seriesColor(panel, svc);
-        const customdata = months.map((m, i) => {
-          const pm = priorYearMonth(m);
-          return [pm, formatHoverMetric(yCurr[i]), formatHoverMetric(yPrior[i])];
-        });
-        const hovertemplate =
-          `<b>[${svc} 당월]</b><br>%{x} %{customdata[1]}<br>` +
-          `<b>[${svc} 전년동기]</b><br>%{customdata[0]} %{customdata[2]}<extra></extra>`;
+      };
 
-        traces.push({
-          type: 'scatter',
-          mode: 'lines+markers',
-          name: `${svc} (당월)`,
-          x: months,
-          y: yCurr,
-          customdata,
-          hovertemplate,
-          showlegend: false,
-          connectgaps: false,
-          line: { shape: 'linear', width: 2.2, color: col },
-          marker: { size: markerSize, color: col },
-        });
-        traces.push({
-          type: 'scatter',
-          mode: 'lines+markers',
-          name: `${svc} (전년 동월)`,
-          x: months,
-          y: yPrior,
-          customdata,
-          hovertemplate,
-          showlegend: false,
-          connectgaps: false,
-          line: { shape: 'linear', width: 2, dash: 'dot', color: hexToRgba(col, 0.72) },
-          marker: {
-            size: Math.max(3, markerSize - 1),
-            color: hexToRgba(col, 0.72),
-            line: { width: 0 },
-          },
-        });
+      const yMauCurr: (number | null)[] = [];
+      const yMauPrior: (number | null)[] = [];
+      const yNewCurr: (number | null)[] = [];
+      const yNewPrior: (number | null)[] = [];
+
+      for (const m of months) {
+        const curRow = byMonth.get(m)?.get(svc);
+        const pm = priorYearMonth(m);
+        const prevRow = byMonth.get(pm)?.get(svc);
+        let { mau: cM, neu: cN } = readMauNew(curRow, device, svc);
+        let { mau: pM, neu: pN } = readMauNew(prevRow, device, svc);
+        if (props.logScale) {
+          cM = cM != null && Number.isFinite(cM) && cM > 0 ? cM : null;
+          pM = pM != null && Number.isFinite(pM) && pM > 0 ? pM : null;
+          cN = cN != null && Number.isFinite(cN) && cN > 0 ? cN : null;
+          pN = pN != null && Number.isFinite(pN) && pN > 0 ? pN : null;
+        } else {
+          cM = cM != null && Number.isFinite(cM) ? cM : null;
+          pM = pM != null && Number.isFinite(pM) ? pM : null;
+          cN = cN != null && Number.isFinite(cN) ? cN : null;
+          pN = pN != null && Number.isFinite(pN) ? pN : null;
+        }
+        yMauCurr.push(cM);
+        yMauPrior.push(pM);
+        yNewCurr.push(cN);
+        yNewPrior.push(pN);
+        collect([cM, pM], 'y');
+        collect([cN, pN], 'y2');
       }
+
+      traces.push({
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'MAU 당월',
+        x: months,
+        y: yMauCurr,
+        yaxis: 'y',
+        hoverinfo: 'none',
+        showlegend: false,
+        connectgaps: false,
+        line: { shape: 'linear', width: 2.2, color: cMauC },
+        marker: { size: markerSize, color: cMauC },
+      });
+      traces.push({
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'MAU 전년 동월',
+        x: months,
+        y: yMauPrior,
+        yaxis: 'y',
+        hoverinfo: 'none',
+        showlegend: false,
+        connectgaps: false,
+        line: { shape: 'linear', width: 2, dash: 'dot', color: cMauP },
+        marker: { size: Math.max(3, markerSize - 1), color: cMauP },
+      });
+      traces.push({
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: '신규 당월',
+        x: months,
+        y: yNewCurr,
+        yaxis: 'y2',
+        hoverinfo: 'none',
+        showlegend: false,
+        connectgaps: false,
+        line: { shape: 'linear', width: 2.2, color: cNewC },
+        marker: { size: markerSize, color: cNewC },
+      });
+      traces.push({
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: '신규 전년 동월',
+        x: months,
+        y: yNewPrior,
+        yaxis: 'y2',
+        hoverinfo: 'none',
+        showlegend: false,
+        connectgaps: false,
+        line: { shape: 'linear', width: 2, dash: 'dot', color: cNewP },
+        marker: { size: Math.max(3, markerSize - 1), color: cNewP },
+      });
 
       if (props.logScale) {
         yMin = Math.max(yMin * 0.35, 1);
         yMax = yMax * 1.35;
+        y2Min = Math.max(y2Min * 0.35, 1);
+        y2Max = y2Max * 1.35;
       } else {
-        yMin = Math.max(0, yMin * 0.85);
-        yMax = yMax * 1.15;
+        yMin = Math.min(0, yMin * 0.95);
+        yMax = yMax * 1.12;
+        y2Min = Math.min(0, y2Min * 0.95);
+        y2Max = y2Max * 1.12;
       }
       if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || yMax <= yMin) {
         yMin = props.logScale ? 1 : 0;
         yMax = 10;
       }
-      return { traces, yMin, yMax };
+      if (!Number.isFinite(y2Min) || !Number.isFinite(y2Max) || y2Max <= y2Min) {
+        y2Min = props.logScale ? 1 : 0;
+        y2Max = 10;
+      }
+
+      return { title, device, traces, yMin, yMax, y2Min, y2Max };
     },
-    [byMonth, months, props.logScale, visible],
+    [byMonth, months, props.logScale, selectedService],
   );
 
   const panelPayloads = useMemo(
-    () => panelDefs.map((d) => ({ ...d, ...buildPanel(d.kind) })),
-    [panelDefs, buildPanel],
+    () => [buildDualPanel('pc'), buildDualPanel('mo')],
+    [buildDualPanel],
   );
 
   const resizePlots = useCallback(() => {
@@ -317,20 +463,26 @@ export function YoYCompareChartsGrid(props: {
     const xTickStep = Math.max(1, Math.ceil(months.length / 8));
     const tickvals = months.filter((_, i) => i % xTickStep === 0);
     const ticktext = tickvals.map(formatMonthTick);
-    const plotHeight = 300;
 
     panelPayloads.forEach((payload, idx) => {
       const el = plotRefs[idx].current;
       if (!el) return;
+
       const logY =
         props.logScale && payload.yMax > 0
           ? buildLogYAxisTicks(payload.yMin, payload.yMax)
           : { tickvals: [] as number[], ticktext: [] as string[] };
+      const logY2 =
+        props.logScale && payload.y2Max > 0
+          ? buildLogYAxisTicks(payload.y2Min, payload.y2Max)
+          : { tickvals: [] as number[], ticktext: [] as string[] };
       const linearY = !props.logScale ? buildLinearYAxisTicks(payload.yMin, payload.yMax) : {};
+      const linearY2 = !props.logScale ? buildLinearYAxisTicks(payload.y2Min, payload.y2Max) : {};
 
       const yaxis: Partial<Layout['yaxis']> = {
         type: props.logScale ? 'log' : 'linear',
-        gridcolor: '#374151',
+        title: { text: 'MAU (명)', font: { size: 11, color: chartTheme.font } },
+        gridcolor: chartTheme.grid,
         rangemode: props.logScale ? undefined : 'tozero',
         separatethousands: true,
         exponentformat: 'none',
@@ -342,31 +494,46 @@ export function YoYCompareChartsGrid(props: {
             : { tickformat: ',.0f' }),
       };
 
+      const yaxis2: Partial<Layout['yaxis']> = {
+        type: props.logScale ? 'log' : 'linear',
+        title: { text: '신규 (명)', font: { size: 11, color: chartTheme.font } },
+        overlaying: 'y',
+        side: 'right',
+        rangemode: props.logScale ? undefined : 'tozero',
+        separatethousands: true,
+        exponentformat: 'none',
+        showexponent: 'none',
+        showgrid: false,
+        ...(props.logScale && logY2.tickvals.length
+          ? { tickmode: 'array', tickvals: logY2.tickvals, ticktext: logY2.ticktext }
+          : !props.logScale
+            ? linearY2
+            : { tickformat: ',.0f' }),
+      };
+
       const layout: Partial<Layout> = {
         title: {
-          text: payload.title,
-          font: { size: 13, color: '#e5e7eb', family: APP_FONT_FAMILY },
-          x: 0,
-          xanchor: 'left',
+          text: '',
+          font: { size: 1, color: chartTheme.fontStrong, family: APP_FONT_FAMILY },
         },
-        paper_bgcolor: '#1f2937',
-        plot_bgcolor: '#1f2937',
-        font: { color: '#e5e7eb', family: APP_FONT_FAMILY, size: 10 },
-        margin: { t: 44, r: 16, b: 48, l: 58 },
+        paper_bgcolor: chartTheme.paper,
+        plot_bgcolor: chartTheme.plot,
+        font: { color: chartTheme.font, family: APP_FONT_FAMILY, size: 10 },
+        margin: { t: 28, r: 72, b: 48, l: 58 },
         showlegend: false,
         xaxis: {
           type: 'category',
           categoryorder: 'array',
           categoryarray: months,
-          gridcolor: '#374151',
+          gridcolor: chartTheme.grid,
           tickangle: -30,
           tickmode: 'array',
           tickvals,
           ticktext,
         },
         yaxis,
+        yaxis2,
         hovermode: 'closest',
-        hoverlabel: { ...PLOTLY_HOVERLABEL },
       };
 
       Plotly.newPlot(el, payload.traces, layout, {
@@ -376,7 +543,34 @@ export function YoYCompareChartsGrid(props: {
         displayModeBar: true,
         modeBarButtonsToRemove: ['lasso2d', 'select2d'],
       });
+
+      const gd = el as unknown as {
+        on: (ev: string, cb: (d: never) => void) => void;
+        removeAllListeners?: (ev: string) => void;
+      };
+      const deviceForChart = payload.device;
+      const handleHover = (data: { points?: { pointIndex: number }[]; event?: MouseEvent }) => {
+        const pt = data.points?.[0];
+        if (pt == null || typeof pt.pointIndex !== 'number') return;
+        const ev = data.event;
+        if (!ev) return;
+        const shell = shellRef.current;
+        if (!shell) return;
+        const rect = shell.getBoundingClientRect();
+        setYoyHoverTip({
+          device: deviceForChart,
+          idx: pt.pointIndex,
+          left: ev.clientX - rect.left,
+          top: ev.clientY - rect.top,
+        });
+      };
+      const handleUnhover = () => setYoyHoverTip(null);
+      gd.on('plotly_hover', handleHover as never);
+      gd.on('plotly_unhover', handleUnhover as never);
+
       cleanups.push(() => {
+        gd.removeAllListeners?.('plotly_hover');
+        gd.removeAllListeners?.('plotly_unhover');
         Plotly.purge(el);
       });
     });
@@ -384,34 +578,45 @@ export function YoYCompareChartsGrid(props: {
     return () => {
       cleanups.forEach((fn) => fn());
     };
-  }, [panelPayloads, months, props.logScale]);
+  }, [panelPayloads, months, props.logScale, chartTheme]);
 
-  const toggleSeries = useCallback((svc: string) => {
-    setVisible((prev) => {
-      const next = { ...prev, [svc]: !prev[svc] };
-      const on = TOGGLE_SERVICES.filter((s) => next[s] !== false).length;
-      if (on === 0) return prev;
-      return next;
-    });
-  }, []);
+  const displayLabel = (svc: string) => (svc === '통합회원' ? `${svc} (신규)` : svc);
 
   return (
-    <div ref={shellRef} className="trend-chart-shell chart-box">
+    <div ref={shellRef} className="trend-chart-shell trend-chart-shell--flat">
+      {activeServices.length === 0 && (
+        <p className="yoy-empty-hint" role="status">
+          선택 구간에 월간 통합 행이 없어 차트를 그릴 수 없습니다.
+        </p>
+      )}
       <div className="trend-chart-toolbar trend-chart-toolbar--yoy">
-        <div className="trend-series-toggles" aria-label="전년 동기 비교 시리즈">
-          <span className="yoy-legend-hint">실선: 당월 · 점선: 전년 동월</span>
-          <div className="trend-toggle-group trend-toggle-group--primary yoy-toggle-row">
-            {TOGGLE_SERVICES.map((svc) => {
-              const isNewOnly = svc === '통합회원';
-              const key = isNewOnly ? newSeriesKey(svc) : mauSeriesKey(svc);
-              const st = SERIES_STYLE[key];
-              const on = visible[svc] !== false;
+        <div className="trend-series-toggles" aria-label="전년 동월 비교 — 범례 및 서비스 선택">
+          <div className="yoy-legend-row">
+            <div className="yoy-metric-chips" aria-label="선 색상(지표별 고정)">
+              {YOY_LEGEND_CHIPS.map((it) => (
+                <span key={it.key} className="yoy-metric-chip">
+                  <span className="yoy-metric-chip-swatch" style={{ background: it.color }} />
+                  {it.label}
+                </span>
+              ))}
+            </div>
+            <span className="yoy-legend-hint">실선 당월 · 점선 전년 동월 · 좌축 MAU · 우축 신규</span>
+          </div>
+          <div className="yoy-service-picker" role="radiogroup" aria-label="서비스 선택">
+            {activeServices.map((svc) => {
+              const on = svc === selectedService;
               return (
-                <label key={svc} className={`trend-trace-toggle${on ? '' : ' trend-trace-toggle-off'}`}>
-                  <input type="checkbox" checked={on} onChange={() => toggleSeries(svc)} />
-                  <span className="trend-swatch" style={{ background: st.color, opacity: on ? 1 : 0.35 }} />
-                  <span>{isNewOnly ? `${svc} (신규)` : svc}</span>
-                </label>
+                <button
+                  key={svc}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  className={`yoy-service-btn${on ? ' yoy-service-btn--active' : ''}`}
+                  onClick={() => setSelectedService(svc)}
+                >
+                  <span className={`yoy-service-dot${on ? ' yoy-service-dot--active' : ''}`} aria-hidden />
+                  <span>{displayLabel(svc)}</span>
+                </button>
               );
             })}
           </div>
@@ -421,16 +626,28 @@ export function YoYCompareChartsGrid(props: {
         </button>
       </div>
       <p className="yoy-range-note">
-        선택 기간의 각 월과 <strong>전년 동월</strong>을 같은 월 축에 겹쳐 표시합니다. (예: 2024-03 당월 vs
-        2023-03)
+        같은 월 축에 <strong>당월</strong>과 <strong>전년 동월</strong>을 겹쳐 봅니다. (예: 2024-03 vs 2023-03)
       </p>
       <div className="yoy-compare-grid">
-        {panelDefs.map((d, idx) => (
-          <div key={d.kind} className="yoy-chart-panel">
-            <div ref={plotRefs[idx]} style={{ width: '100%', height: 300 }} />
+        {panelPayloads.map((p) => (
+          <div key={p.device} className="yoy-chart-panel-wrap">
+            <div className="yoy-chart-device-caption">{p.device === 'pc' ? 'PC' : 'Mobile'}</div>
+            <div className="yoy-chart-panel">
+              <div ref={p.device === 'pc' ? plotRef0 : plotRef1} style={{ width: '100%', height: 300 }} />
+            </div>
           </div>
         ))}
       </div>
+      {yoyHoverTip && (
+        <YoyHoverCard
+          tip={yoyHoverTip}
+          months={months}
+          selectedService={selectedService}
+          byMonth={byMonth}
+          logScale={props.logScale}
+          containerEl={shellRef.current}
+        />
+      )}
     </div>
   );
 }

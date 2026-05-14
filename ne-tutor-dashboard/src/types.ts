@@ -19,9 +19,9 @@ export interface MonthlyMetricRow {
   service: string;
   device: DeviceFilter;
   month: string; // YYYY-MM
-  newUsersSum: number;
+  newUsersSum: number | null;
   /** 월 내 일별 활성 사용자 집계 후 산출한 추정 MAU (MVP) */
-  mauEstimate: number;
+  mauEstimate: number | null;
   viewsSum: number;
   returningUsersSum: number;
   /** 일별 (재방문/활성) 비율의 월 평균 */
@@ -32,8 +32,8 @@ export interface YearlyMetricRow {
   service: string;
   device: DeviceFilter;
   year: string; // YYYY
-  newUsersSum: number;
-  mauEstimate: number;
+  newUsersSum: number | null;
+  mauEstimate: number | null;
   viewsSum: number;
   returningUsersSum: number;
   returningRateAvg: number | null;
@@ -67,12 +67,19 @@ export interface GrammarOverlapFlow {
   pct: number;
 }
 
-/** E-Book 시트(년·월·클릭수) 월별 원시 행 */
+/** E-Book 시트 월별 원시 행 (클릭·LAW 지표는 월간 xlsx 레이아웃에 따라 null 가능) */
 export interface EbookMonthlyRow {
   year: number;
   month: number;
   monthKey: string;
-  clicks: number;
+  /** E-book 클릭 수(중복포함) — 빈 셀은 null */
+  clicks: number | null;
+  /** LAW · E-Book 이용자수(중복제거) */
+  lawEbookUniqueUsers?: number | null;
+  /** LAW · 부가자료 전체 다운로드(중복포함) */
+  lawSupplementaryFullDownloads?: number | null;
+  /** LAW · 부가자료 개별 다운로드(중복제거) */
+  lawSupplementaryIndividualDownloads?: number | null;
 }
 
 /**
@@ -85,10 +92,12 @@ export interface MonthlyByDeviceRow {
   service: string;
   /** YYYY-MM */
   month: string;
-  pcMau: number;
-  moMau: number;
-  pcNew: number;
-  moNew: number;
-  /** 통합회원 시트의 '교강사' 신규가입 행 (그 외 서비스는 0) */
-  teacherNew: number;
+  /** 빈 셀·비수치는 null (0은 실제 0) */
+  pcMau: number | null;
+  /** 모바일 미집계·결측 구간은 null (엑셀 0과 구분) */
+  moMau: number | null;
+  pcNew: number | null;
+  moNew: number | null;
+  /** 통합회원 시트의 '교강사' 신규가입 — 빈 셀은 null */
+  teacherNew: number | null;
 }

@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EbookMonthlyRow, MonthlyByDeviceRow, OrderRecord } from '../types';
-import { EBOOK_RAW_KEY, ORDERS_RAW_KEY, RAW_MENU_ITEMS } from '../data/gaSources';
+import { EBOOK_RAW_KEY, ORDERS_RAW_KEY, RAW_MENU_ITEMS, SUPPLEMENTARY_RAW_KEY } from '../data/gaSources';
 
 function fmtInt(n: number): string {
   return new Intl.NumberFormat('ko-KR').format(n);
+}
+
+function fmtCell(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return fmtInt(n);
 }
 
 const ALL = '전체';
@@ -26,6 +31,7 @@ export function RawDataPanel(props: {
   const dataService = menu?.dataService ?? props.sourceFile;
   const isOrders = dataService === ORDERS_RAW_KEY;
   const isEbook = dataService === EBOOK_RAW_KEY;
+  const isSupplementary = dataService === SUPPLEMENTARY_RAW_KEY;
   const isMember = dataService === '통합회원';
 
   // 필터: 년도(YYYY), 월(1-12), '전체' 옵션 지원
@@ -45,17 +51,17 @@ export function RawDataPanel(props: {
 
   // 서비스별 월간 행
   const serviceRows = useMemo(() => {
-    if (isOrders || isEbook) return [];
+    if (isOrders || isEbook || isSupplementary) return [];
     return props.monthlyByDevice
       .filter((r) => r.service === dataService)
       .sort((a, b) => a.month.localeCompare(b.month));
-  }, [props.monthlyByDevice, dataService, isOrders, isEbook]);
+  }, [props.monthlyByDevice, dataService, isOrders, isEbook, isSupplementary]);
 
-  // E-Book 월별
+  // E-Book / 부가자료: 동일 월간 원천(ebookMonthly), 표시 컬럼만 구분
   const ebookRows = useMemo(() => {
-    if (!isEbook) return [];
+    if (!isEbook && !isSupplementary) return [];
     return [...props.ebookMonthly].sort((a, b) => a.monthKey.localeCompare(b.monthKey));
-  }, [props.ebookMonthly, isEbook]);
+  }, [props.ebookMonthly, isEbook, isSupplementary]);
 
   // 주문별
   const orderAll = useMemo(() => {
@@ -68,11 +74,11 @@ export function RawDataPanel(props: {
     if (isOrders) {
       return uniqSorted(orderAll.map((o) => String(o.orderDate.getFullYear())));
     }
-    if (isEbook) {
+    if (isEbook || isSupplementary) {
       return uniqSorted(ebookRows.map((r) => String(r.year)));
     }
     return uniqSorted(serviceRows.map((r) => r.month.slice(0, 4)));
-  }, [isOrders, isEbook, orderAll, ebookRows, serviceRows]);
+  }, [isOrders, isEbook, isSupplementary, orderAll, ebookRows, serviceRows]);
 
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')),
@@ -153,7 +159,7 @@ export function RawDataPanel(props: {
 
   const totalCount = isOrders
     ? orderGrouped.length
-    : isEbook
+    : isEbook || isSupplementary
       ? ebookFiltered.length
       : serviceFiltered.length;
 
@@ -252,7 +258,7 @@ export function RawDataPanel(props: {
         총 <strong style={{ color: 'var(--text)' }}>{fmtInt(totalCount)}</strong> 건
       </p>
 
-      {!isOrders && !isEbook && !isMember && (
+      {!isOrders && !isEbook && !isSupplementary && !isMember && (
         <div className="table-wrap" style={{ maxHeight: 'min(72vh, 900px)' }}>
           <table className="data">
             <thead>
@@ -272,10 +278,10 @@ export function RawDataPanel(props: {
               {serviceDisplay.map((r) => (
                 <tr key={r.month}>
                   <td>{r.month}</td>
-                  <td>{fmtInt(r.pcMau)}</td>
-                  <td>{fmtInt(r.pcNew)}</td>
-                  <td>{fmtInt(r.moMau)}</td>
-                  <td>{fmtInt(r.moNew)}</td>
+                  <td>{fmtCell(r.pcMau)}</td>
+                  <td>{fmtCell(r.pcNew)}</td>
+                  <td>{fmtCell(r.moMau)}</td>
+                  <td>{fmtCell(r.moNew)}</td>
                 </tr>
               ))}
             </tbody>
@@ -307,8 +313,8 @@ export function RawDataPanel(props: {
               {serviceDisplay.map((r) => (
                 <tr key={r.month}>
                   <td>{r.month}</td>
-                  <td>{fmtInt(r.pcNew)}</td>
-                  <td>{fmtInt(r.moNew)}</td>
+                  <td>{fmtCell(r.pcNew)}</td>
+                  <td>{fmtCell(r.moNew)}</td>
                 </tr>
               ))}
             </tbody>
@@ -327,14 +333,24 @@ export function RawDataPanel(props: {
             <thead>
               <tr>
                 <th>년/월</th>
-                <th>클릭수</th>
+                <th>
+                  E-Book 클릭수
+                  <br />
+                  <span style={{ fontWeight: 500, fontSize: '0.72rem' }}>(중복포함)</span>
+                </th>
+                <th>
+                  E-Book 이용자수
+                  <br />
+                  <span style={{ fontWeight: 500, fontSize: '0.72rem' }}>(중복제거)</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {ebookFiltered.map((r) => (
                 <tr key={r.monthKey}>
                   <td>{r.monthKey}</td>
-                  <td>{fmtInt(r.clicks)}</td>
+                  <td>{fmtCell(r.clicks)}</td>
+                  <td>{fmtCell(r.lawEbookUniqueUsers ?? null)}</td>
                 </tr>
               ))}
             </tbody>
@@ -342,6 +358,42 @@ export function RawDataPanel(props: {
           {ebookFiltered.length === 0 && (
             <p className="muted-p" style={{ padding: 16 }}>
               선택한 기간에 E-Book 월별 데이터가 없습니다.
+            </p>
+          )}
+        </div>
+      )}
+
+      {isSupplementary && (
+        <div className="table-wrap" style={{ maxHeight: 'min(72vh, 900px)' }}>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>년/월</th>
+                <th>
+                  부가자료 전체
+                  <br />
+                  <span style={{ fontWeight: 500, fontSize: '0.72rem' }}>(중복포함)</span>
+                </th>
+                <th>
+                  부가자료 개별
+                  <br />
+                  <span style={{ fontWeight: 500, fontSize: '0.72rem' }}>(중복제거)</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {ebookFiltered.map((r) => (
+                <tr key={r.monthKey}>
+                  <td>{r.monthKey}</td>
+                  <td>{fmtCell(r.lawSupplementaryFullDownloads ?? null)}</td>
+                  <td>{fmtCell(r.lawSupplementaryIndividualDownloads ?? null)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {ebookFiltered.length === 0 && (
+            <p className="muted-p" style={{ padding: 16 }}>
+              선택한 기간에 부가자료 월별 데이터가 없습니다.
             </p>
           )}
         </div>

@@ -30,6 +30,15 @@ function monthKeyFromCell(cell) {
   if (cell instanceof Date && !Number.isNaN(cell.getTime())) {
     return `${cell.getFullYear()}-${String(cell.getMonth() + 1).padStart(2, '0')}`;
   }
+  if (typeof cell === 'number' && Number.isFinite(cell)) {
+    const n = cell;
+    if (n > 2000 && n < 2101) {
+      const y = Math.floor(n + 1e-9);
+      const rem = n - y;
+      const month = Math.round(rem * 100 + 1e-4);
+      if (month >= 1 && month <= 12) return `${y}-${String(month).padStart(2, '0')}`;
+    }
+  }
   const s = String(cell ?? '').trim();
   if (!s) return null;
   const m = s.match(/^(\d{4})[.\-/](\d{1,2})$/);
@@ -109,19 +118,34 @@ function parseEbookSheet(matrix) {
   const head = findMonthHeader(matrix);
   if (!head) return [];
   const lm = rowsByLabel(matrix, head.headerIdx + 1);
-  const clickRow = lm.get('클릭 수') || lm.get('클릭수');
+  const clickRow =
+    lm.get('E-book 클릭 수 (중복포함)') ||
+    lm.get('E-Book 클릭 수 (중복포함)') ||
+    lm.get('클릭 수') ||
+    lm.get('클릭수');
   if (!clickRow) return [];
+  const usersRow = lm.get('E-Book 이용자수 (중복제거)');
+  const supFullRow = lm.get('부가자료전체다운로드(중복포함)');
+  const supIndRow = lm.get('부가자료개별다운로드(중복제거)');
   const rows = [];
   for (const { col, month } of head.monthCols) {
     const v = parseNumber(clickRow[col]);
     const [y, m] = month.split('-');
-    rows.push({ year: Number(y), month: Number(m), monthKey: month, clicks: Math.round(v) });
+    rows.push({
+      year: Number(y),
+      month: Number(m),
+      monthKey: month,
+      clicks: Math.round(v),
+      lawEbookUniqueUsers: usersRow ? (parseNumber(usersRow[col]) || null) : null,
+      lawSupplementaryFullDownloads: supFullRow ? (parseNumber(supFullRow[col]) || null) : null,
+      lawSupplementaryIndividualDownloads: supIndRow ? (parseNumber(supIndRow[col]) || null) : null,
+    });
   }
   rows.sort((a, b) => a.monthKey.localeCompare(b.monthKey));
   return rows;
 }
 
-const file = path.resolve(__dirname, '..', 'public', 'data', 'NE Tutor 데이터 현황_260513_월간data.xlsx');
+const file = path.resolve(__dirname, '..', 'public', 'data', 'NE Tutor 데이터 현황_260514_v2.0_월간data.xlsx');
 const wb = XLSX.readFile(file, { cellDates: true });
 const all = [];
 let ebook = [];
@@ -140,6 +164,8 @@ for (const sn of wb.SheetNames) {
   } else if (t === EBOOK_SHEET) {
     ebook = parseEbookSheet(mtx);
     console.log(`[${t}] rows: ${ebook.length}`);
+  } else if (/\s+law$/i.test(t) || t.startsWith('교재별')) {
+    console.log(`(skip) ${t}`);
   } else {
     console.log(`(skip) ${t}`);
   }

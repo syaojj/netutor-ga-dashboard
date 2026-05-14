@@ -2,7 +2,7 @@
 const path = require('path');
 const XLSX = require('xlsx');
 
-const file = path.resolve(__dirname, '..', 'public', 'data', 'NE Tutor 데이터 현황_260513_월간data.xlsx');
+const file = path.resolve(__dirname, '..', 'public', 'data', 'NE Tutor 데이터 현황_260514_v2.0_월간data.xlsx');
 console.log('FILE', file);
 const wb = XLSX.readFile(file, { cellDates: true });
 console.log('SHEETS', wb.SheetNames);

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
-import { APP_FONT_FAMILY, PLOTLY_HOVERLABEL } from '../fonts';
+import { APP_FONT_FAMILY } from '../fonts';
+import { useTheme } from '../context/ThemeContext';
 import type { BeforeAfterBar, CategoryComboSummaryRow, OrderMonthlyAgg } from '../utils/metrics';
 
 function splitCategories(comboLabel: string): string[] {
@@ -70,6 +71,7 @@ export function GrammarSection(props: {
   categoryComboSummary: CategoryComboSummaryRow[];
   hasOrders: boolean;
 }) {
+  const { chartTheme, plotlyHoverlabel } = useTheme();
   const refBar = useRef<HTMLDivElement>(null);
   const refLine = useRef<HTMLDivElement>(null);
 
@@ -97,17 +99,17 @@ export function GrammarSection(props: {
     ];
     const layout: Partial<Layout> = {
       barmode: 'group',
-      paper_bgcolor: '#1f2937',
-      plot_bgcolor: '#1f2937',
-      font: { color: '#e5e7eb', family: APP_FONT_FAMILY },
-      hoverlabel: { ...PLOTLY_HOVERLABEL },
+      paper_bgcolor: chartTheme.paper,
+      plot_bgcolor: chartTheme.plot,
+      font: { color: chartTheme.font, family: APP_FONT_FAMILY },
+      hoverlabel: { ...plotlyHoverlabel },
       margin: { t: 28, r: 16, b: 80, l: 56 },
       xaxis: { tickangle: -20 },
       yaxis: { title: { text: '값' } },
       legend: { orientation: 'h', y: 1.1 },
     };
     return { traces, layout };
-  }, [props.beforeAfter]);
+  }, [props.beforeAfter, chartTheme, plotlyHoverlabel]);
 
   const lineData = useMemo(() => {
     const months = props.orderMonthly.map((o) => o.month);
@@ -134,10 +136,10 @@ export function GrammarSection(props: {
       },
     ];
     const layout: Partial<Layout> = {
-      paper_bgcolor: '#1f2937',
-      plot_bgcolor: '#1f2937',
-      font: { color: '#e5e7eb', family: APP_FONT_FAMILY },
-      hoverlabel: { ...PLOTLY_HOVERLABEL },
+      paper_bgcolor: chartTheme.paper,
+      plot_bgcolor: chartTheme.plot,
+      font: { color: chartTheme.font, family: APP_FONT_FAMILY },
+      hoverlabel: { ...plotlyHoverlabel },
       margin: { t: 36, r: 56, b: 48, l: 56 },
       xaxis: { title: { text: '월' } },
       yaxis: { title: { text: '주문 건수' }, side: 'left' },
@@ -150,7 +152,7 @@ export function GrammarSection(props: {
       legend: { orientation: 'h', y: 1.12 },
     };
     return { traces, layout };
-  }, [props.orderMonthly]);
+  }, [props.orderMonthly, chartTheme, plotlyHoverlabel]);
 
   useEffect(() => {
     const el = refBar.current;

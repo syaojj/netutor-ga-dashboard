@@ -10,7 +10,7 @@ const row: CSSProperties = {
   padding: '12px 14px',
   borderRadius: 10,
   border: '1px solid var(--border)',
-  background: 'rgba(15,23,42,0.55)',
+  background: 'var(--panel)',
 };
 
 const label: CSSProperties = { fontSize: '0.8rem', color: 'var(--muted)' };
@@ -57,12 +57,6 @@ export function TrendRangeControls(props: {
 
       {props.presetMode === 'monthly' ? (
         <>
-          <button type="button" className="btn" onClick={() => props.onPreset('30d')}>
-            최근 30일
-          </button>
-          <button type="button" className="btn" onClick={() => props.onPreset('3m')}>
-            최근 3개월
-          </button>
           <button type="button" className="btn" onClick={() => props.onPreset('1y')}>
             최근 1년
           </button>

@@ -15,8 +15,6 @@ const styles: Record<string, CSSProperties> = {
   },
   header: {
     padding: '14px 24px',
-    borderBottom: '1px solid var(--border)',
-    background: 'linear-gradient(180deg, #0f172a 0%, var(--bg) 100%)',
   },
   headerRow: {
     display: 'flex',
@@ -56,9 +54,9 @@ export function Layout(props: {
       {props.sidebar}
       <div style={styles.main}>
         {!props.hideTopBar && (
-          <header style={styles.header}>
+          <header className="app-header-bar" style={styles.header}>
             <div style={styles.headerRow}>
-              <h1 style={styles.title}>NE Tutor GA data Dashboard</h1>
+              <h1 style={styles.title}>NE Tutor GA 대시보드</h1>
               <div style={styles.filtersWrap}>{props.filters}</div>
             </div>
           </header>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { APP_FONT_FAMILY, PLOTLY_HOVERLABEL } from '../fonts';
+import { APP_FONT_FAMILY } from '../fonts';
+import { useTheme } from '../context/ThemeContext';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
 
@@ -15,6 +16,7 @@ export function CorrelationPanel(props: {
   z: (number | null)[][];
   months: string[];
 }) {
+  const { chartTheme, plotlyHoverlabel } = useTheme();
   const ref = useRef<HTMLDivElement>(null);
 
   const { data, layout } = useMemo(() => {
@@ -30,14 +32,14 @@ export function CorrelationPanel(props: {
       zmax: 1,
     } as Data;
     const layout: Partial<Layout> = {
-      paper_bgcolor: '#1f2937',
-      plot_bgcolor: '#1f2937',
-      font: { color: '#e5e7eb', size: 11, family: APP_FONT_FAMILY },
-      hoverlabel: { ...PLOTLY_HOVERLABEL },
+      paper_bgcolor: chartTheme.paper,
+      plot_bgcolor: chartTheme.plot,
+      font: { color: chartTheme.font, size: 11, family: APP_FONT_FAMILY },
+      hoverlabel: { ...plotlyHoverlabel },
       margin: { t: 48, r: 100, b: 160, l: 140 },
       title: {
         text: props.months.length ? `월 수: ${props.months.length}개 구간` : '데이터 부족',
-        font: { size: 12, color: '#9ca3af', family: APP_FONT_FAMILY },
+        font: { size: 12, color: chartTheme.font, family: APP_FONT_FAMILY },
       },
       xaxis: {
         side: 'bottom',
@@ -51,7 +53,7 @@ export function CorrelationPanel(props: {
       },
     };
     return { data: [trace], layout };
-  }, [props.labels, props.z, props.months]);
+  }, [props.labels, props.z, props.months, chartTheme, plotlyHoverlabel]);
 
   useEffect(() => {
     const el = ref.current;

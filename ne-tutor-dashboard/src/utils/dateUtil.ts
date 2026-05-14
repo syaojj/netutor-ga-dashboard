@@ -15,6 +15,21 @@ export function toMonthKey(isoDate: string): string {
   return isoDate.slice(0, 7);
 }
 
+/** YYYY-MM 달력 delta개월 이동 */
+export function addCalendarMonths(ym: string, delta: number): string {
+  let y = Number(ym.slice(0, 4));
+  let m = Number(ym.slice(5, 7)) - 1 + delta;
+  while (m < 0) {
+    m += 12;
+    y -= 1;
+  }
+  while (m >= 12) {
+    m -= 12;
+    y += 1;
+  }
+  return `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
 export function toYearKey(isoDate: string): string {
   return isoDate.slice(0, 4);
 }

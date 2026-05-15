@@ -592,20 +592,43 @@ table.data th {
   gap: 12px;
 }
 
-/* 요약 카드: 한 행 7열 — NE Tutor 강조 + 부가·E-Book + 서비스 4개가 가로 전체를 채움 */
+/* 요약 카드: 한 행 7열 — NE Tutor 강조, 부가·E-Book은 좁게, 서비스 4열 균등 */
 .monthly-trend-summary-grid--fluid {
   display: grid;
   width: 100%;
   gap: 12px;
-  grid-template-columns: minmax(200px, 2.2fr) minmax(0, 1.15fr) minmax(0, 1.15fr) repeat(4, minmax(0, 1fr));
-  align-items: start;
+  grid-template-columns: minmax(200px, 2.2fr) minmax(0, 0.82fr) minmax(0, 0.82fr) repeat(4, minmax(0, 1fr));
+  align-items: stretch;
 }
 
-.monthly-trend-ne-tower {
+.monthly-trend-summary-grid--fluid > .monthly-trend-ne-tower {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  min-height: 0;
   min-width: 0;
+}
+
+.monthly-trend-summary-grid--fluid > .monthly-trend-ne-tower > .monthly-trend-card--primary {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.monthly-trend-summary-grid--fluid > .monthly-trend-card.monthly-trend-card--compare {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.monthly-trend-summary-grid--fluid > .monthly-trend-card.monthly-trend-card--compare .monthly-trend-card-metrics-row {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
 }
 
 @media (max-width: 1100px) {
@@ -680,7 +703,7 @@ table.data th {
 
 .monthly-trend-card--metric-single .monthly-trend-card-metric-half {
   flex: 0 1 100%;
-  max-width: 11rem;
+  max-width: 8rem;
 }
 
 .monthly-trend-card--placeholder {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Plotly from 'plotly.js-dist-min';
 import type { Config, Data, Layout, Shape } from 'plotly.js';
 import type { EcosystemEvent, MonthlyByDeviceRow, YearlyMetricRow } from '../types';
-import { assignEventAnnotationLanes, formatEventAnnotationHtml } from '../utils/trendEventLayout';
+import { assignEventAnnotationLanes, eventAnnotationTopMarginPx, EVENT_ANN_LANE_SPACING_PX, formatEventAnnotationHtml } from '../utils/trendEventLayout';
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
 import {
@@ -219,12 +219,7 @@ export function TrendChartYearly(props: {
 
   /** plot 본문 ~360px 이상 보장하는 동적 높이 */
   const chartHeight = useMemo(() => {
-    const BUBBLE_LANE_SPACING_PX = 46;
-    const BUBBLE_HEIGHT_PX = 38;
-    const topMargin = Math.max(
-      52,
-      eventLaneMeta.maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 8,
-    );
+    const topMargin = eventAnnotationTopMarginPx(eventLaneMeta.maxLanes);
     return topMargin + 360 + 56;
   }, [eventLaneMeta.maxLanes]);
 
@@ -472,8 +467,6 @@ export function TrendChartYearly(props: {
     const annMeta = assignEventAnnotationLanes(eventsVisible, years, (anchor) =>
       years.indexOf(yearKeyFromAnchor(anchor)),
     );
-    const BUBBLE_LANE_SPACING_PX = 46;
-    const BUBBLE_HEIGHT_PX = 38;
     const annotations = annMeta.map(({ ev, lane, xshift }) => {
       return {
         x: yearKeyFromAnchor(ev.anchorDate),
@@ -481,7 +474,7 @@ export function TrendChartYearly(props: {
         xshift,
         y: 1,
         yref: 'paper' as const,
-        yshift: lane * BUBBLE_LANE_SPACING_PX + 4,
+        yshift: lane * EVENT_ANN_LANE_SPACING_PX + 2,
         text: formatEventAnnotationHtml(ev),
         showarrow: false,
         arrowhead: 0,
@@ -499,7 +492,7 @@ export function TrendChartYearly(props: {
     });
 
     const maxLanes = annMeta.length === 0 ? 0 : Math.max(...annMeta.map((a) => a.lane + 1));
-    const topMargin = Math.max(52, maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 8);
+    const topMargin = eventAnnotationTopMarginPx(maxLanes);
 
     const yaxis: Partial<Layout['yaxis']> = {
       autorange: true,

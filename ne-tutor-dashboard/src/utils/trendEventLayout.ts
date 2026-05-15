@@ -55,6 +55,21 @@ export function assignEventAnnotationLanes(
   });
 }
 
+/** Plotly paper 기준 이벤트 주석: 레인 간격(px) — margin.t·yshift·차트 높이와 동기 */
+export const EVENT_ANN_LANE_SPACING_PX = 34;
+const EVENT_ANN_TEXT_BLOCK_PX = 30;
+const EVENT_ANN_TOP_PAD_PX = 4;
+const EVENT_ANN_TOP_MARGIN_MIN_PX = 36;
+
+/** 이벤트 레인 수에 따른 상단 margin(px). 레인 0이면 최소값만 사용 */
+export function eventAnnotationTopMarginPx(maxLanes: number): number {
+  if (maxLanes <= 0) return EVENT_ANN_TOP_MARGIN_MIN_PX;
+  return Math.max(
+    EVENT_ANN_TOP_MARGIN_MIN_PX,
+    maxLanes * EVENT_ANN_LANE_SPACING_PX + EVENT_ANN_TEXT_BLOCK_PX + EVENT_ANN_TOP_PAD_PX,
+  );
+}
+
 /**
  * 한글 이벤트명을 2줄로 자동 분할.
  * - 6자 이하면 한 줄로 둠.

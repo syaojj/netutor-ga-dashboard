@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import Plotly from 'plotly.js-dist-min';
 import type { Config, Data, Layout, Shape } from 'plotly.js';
 import type { EbookMonthlyRow, EcosystemEvent, MonthlyByDeviceRow, MonthlyMetricRow } from '../types';
-import { assignEventAnnotationLanes, formatEventAnnotationHtml } from '../utils/trendEventLayout';
+import { assignEventAnnotationLanes, eventAnnotationTopMarginPx, EVENT_ANN_LANE_SPACING_PX, formatEventAnnotationHtml } from '../utils/trendEventLayout';
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
 import {
@@ -235,12 +235,7 @@ export function TrendChart(props: {
    * (이벤트 레인 영역 + 본문 + 하단 축) 합으로 계산.
    */
   const chartHeight = useMemo(() => {
-    const BUBBLE_LANE_SPACING_PX = 46;
-    const BUBBLE_HEIGHT_PX = 38;
-    const topMargin = Math.max(
-      52,
-      eventLaneMeta.maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 8,
-    );
+    const topMargin = eventAnnotationTopMarginPx(eventLaneMeta.maxLanes);
     const PLOT_BODY_PX = 360;
     const BOTTOM_MARGIN_PX = 56;
     return topMargin + PLOT_BODY_PX + BOTTOM_MARGIN_PX;
@@ -517,8 +512,6 @@ export function TrendChart(props: {
      * top margin 이 plot 영역을 잠식하는 문제가 있었음. 픽셀 단위 yshift 는 plot 높이와
      * 무관하므로 차트 본문이 일정하게 보장된다.
      */
-    const BUBBLE_LANE_SPACING_PX = 46;
-    const BUBBLE_HEIGHT_PX = 38;
     const annotations = annMeta.map(({ ev, lane, xshift }) => {
       return {
         x: monthKeyFromAnchor(ev.anchorDate),
@@ -526,7 +519,7 @@ export function TrendChart(props: {
         xshift,
         y: 1,
         yref: 'paper' as const,
-        yshift: lane * BUBBLE_LANE_SPACING_PX + 4,
+        yshift: lane * EVENT_ANN_LANE_SPACING_PX + 2,
         text: formatEventAnnotationHtml(ev),
         showarrow: false,
         arrowhead: 0,
@@ -544,8 +537,7 @@ export function TrendChart(props: {
     });
 
     const maxLanes = annMeta.length === 0 ? 0 : Math.max(...annMeta.map((a) => a.lane + 1));
-    /** 픽셀 단위 top margin = 가장 위 레인의 라벨 상단 + 약간의 여유 */
-    const topMargin = Math.max(52, maxLanes * BUBBLE_LANE_SPACING_PX + BUBBLE_HEIGHT_PX + 8);
+    const topMargin = eventAnnotationTopMarginPx(maxLanes);
 
     const yaxis: Partial<Layout['yaxis']> = {
       autorange: true,

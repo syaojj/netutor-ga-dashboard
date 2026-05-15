@@ -12,6 +12,7 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     minWidth: 0,
+    minHeight: 0,
   },
   header: {
     padding: '14px 24px',
@@ -39,6 +40,7 @@ const styles: Record<string, CSSProperties> = {
     padding: '16px 24px 48px',
     flex: 1,
     overflow: 'auto',
+    minHeight: 0,
   },
 };
 

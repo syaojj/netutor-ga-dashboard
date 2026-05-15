@@ -96,12 +96,22 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   font-family: var(--font-app);
+}
+
+#root {
+  height: 100%;
+  min-height: 0;
 }
 
 a {
@@ -319,6 +329,26 @@ input[type='date'] {
 .yoy-split-chart-col,
 .yoy-split-events-col {
   min-width: 0;
+}
+
+/*
+ * 전년동월 2열: 오른쪽(이벤트 카드)이 더 길 때 왼쪽 셀 높이를 행 전체로 늘려야 sticky가 동작함.
+ * (align-items: start만 있으면 왼쪽 열이 차트 높이로만 잡혀 스크롤 여유가 없음)
+ */
+@media (min-width: 1041px) {
+  .yoy-chart-events-split .yoy-split-chart-col {
+    align-self: stretch;
+  }
+
+  .yoy-chart-events-split .yoy-split-events-col {
+    align-self: start;
+  }
+
+  .yoy-chart-events-split .yoy-split-chart-col .trend-subsection-panel {
+    position: sticky;
+    top: 8px;
+    z-index: 2;
+  }
 }
 
 .monthly-trend-summary--flat {
@@ -2672,6 +2702,9 @@ table.data.impact-summary-table .impact-pct-cell {
 .app-root {
   display: flex;
   min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
 }
 
 @media (max-width: 900px) {

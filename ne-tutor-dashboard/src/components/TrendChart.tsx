@@ -794,12 +794,10 @@ export function TrendChart(props: {
 
   return (
     <div ref={shellRef} className="trend-chart-shell trend-chart-shell--flat">
+      <h3 className="trend-chart-mau-heading">월별 MAU·신규사용자 추이</h3>
       <div className="trend-chart-main-row">
         <aside className="trend-chart-filters-col" aria-label="월별 MAU·신규사용자 추이 표시 선택">
           <div className="mau-trend-query-card">
-            <h3 className="mau-trend-query-card__title">월별 MAU·신규사용자 추이</h3>
-
-            <p className="mau-trend-query-card__section-caption">기준 지표</p>
             <div className="mau-trend-query-row">
               <span className="mau-trend-query-row__name">NE Tutor</span>
               <div className="mau-trend-query-row__pills">

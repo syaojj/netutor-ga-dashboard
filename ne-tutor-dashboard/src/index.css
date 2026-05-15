@@ -256,13 +256,25 @@ input[type='date'] {
   line-height: 1.5;
 }
 
+/* 월별 MAU 블록 제목·섹션 소제목(h3) 공통 타이포 (0.95rem) */
+.trend-chart-mau-heading,
+.trend-subsection-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.trend-chart-mau-heading {
+  margin: 0 0 12px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 .trend-subsection-title {
   margin: 0 0 10px;
-  font-size: 0.82rem;
-  font-weight: 650;
-  color: var(--text);
-  letter-spacing: -0.01em;
-  line-height: 1.3;
 }
 
 .trend-range-controls {
@@ -1383,15 +1395,6 @@ table.data.impact-summary-table .impact-pct-cell {
   width: 100%;
   justify-content: center;
   box-sizing: border-box;
-}
-
-.mau-trend-query-card__title {
-  margin: 0 0 14px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.35;
-  letter-spacing: -0.02em;
 }
 
 .mau-trend-query-card__section-caption {

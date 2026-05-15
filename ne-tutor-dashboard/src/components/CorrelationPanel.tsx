@@ -61,7 +61,7 @@ export function CorrelationPanel(props: {
     Plotly.newPlot(el, data, layout, {
       responsive: true,
       displaylogo: false,
-      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+      displayModeBar: false,
     });
     return () => Plotly.purge(el);
   }, [data, layout]);

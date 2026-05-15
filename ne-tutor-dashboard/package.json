@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "inspect-xlsx": "node scripts/inspect-xlsx.mjs",
-    "verify-ga": "npx --yes tsx scripts/verify-ga-workbook.ts"
+    "verify-ga": "npx --yes tsx scripts/verify-ga-workbook.ts",
+    "verify-monthly": "npx --yes tsx scripts/verify-monthly-trend-data.ts"
   },
   "dependencies": {
     "plotly.js-dist-min": "^2.35.3",

@@ -1,22 +1,29 @@
 import type { DeviceFilter, MonthlyByDeviceRow, MonthlyMetricRow, YearlyMetricRow } from '../types';
 
-function mauForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number | null {
-  if (device === 'PC') return r.pcMau;
-  if (device === 'M') return r.moMau;
-  if (r.moMau == null || r.pcMau == null) return null;
-  return r.pcMau + r.moMau;
+/** UI PC/Mobile 체크 → 월간 집계에 쓰는 DeviceFilter (둘 다 끔은 UI에서 막음). */
+export function deviceFromPcMoFlags(showPC: boolean, showMobile: boolean): DeviceFilter {
+  if (showPC && showMobile) return 'all';
+  if (showPC) return 'PC';
+  return 'M';
 }
 
-function newForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number | null {
+export function mauForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number | null {
+  if (device === 'PC') return r.pcMau;
+  if (device === 'M') return r.moMau;
+  /** PC+Mobile: 한쪽만 집계된 월도 합산(둘 다 결측일 때만 null). 개별 디바이스 선택과 동일 소스를 합친 값. */
+  if (r.pcMau == null && r.moMau == null) return null;
+  return (r.pcMau ?? 0) + (r.moMau ?? 0);
+}
+
+export function newForDevice(r: MonthlyByDeviceRow, device: DeviceFilter): number | null {
   if (device === 'PC') return r.pcNew;
   if (device === 'M') return r.moNew;
-  if (r.moNew == null || r.pcNew == null) return null;
-  let base = r.pcNew + r.moNew;
   if (r.service === '통합회원' && device === 'all') {
-    if (r.teacherNew == null) return null;
-    base += r.teacherNew;
+    if (r.pcNew == null && r.moNew == null && r.teacherNew == null) return null;
+    return (r.pcNew ?? 0) + (r.moNew ?? 0) + (r.teacherNew ?? 0);
   }
-  return base;
+  if (r.pcNew == null && r.moNew == null) return null;
+  return (r.pcNew ?? 0) + (r.moNew ?? 0);
 }
 
 /** 월간 by-device 행 → 트렌드 차트가 기대하는 MonthlyMetricRow[]로 변환 */

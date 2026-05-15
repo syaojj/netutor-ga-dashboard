@@ -3,9 +3,11 @@
  * 검색 구간(월)에 기준일이 포함된 ECOSYSTEM_EVENTS만 표시하고,
  * NE Tutor 월간 통합 행으로 이벤트 전후 7개월(T-3~T+3) 스파크·기준월(M) 대비 이후 3개월(M+1~M+3) 평균 증감%를 연결합니다.
  */
-import { useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { EcosystemEvent, MonthlyByDeviceRow } from '../types';
 import { addCalendarMonths, toMonthKey } from '../utils/dateUtil';
+import { clampTooltipToViewport } from '../utils/viewportTooltipPosition';
 import { SERIES_STYLE } from './trendSeriesConfig';
 
 const NE = 'NE Tutor';
@@ -178,18 +180,163 @@ function fmtSparkInt(n: number | null): string {
   return new Intl.NumberFormat('ko-KR').format(Math.round(n));
 }
 
+function fmtSparkCell(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return `${new Intl.NumberFormat('ko-KR').format(Math.round(n))}명`;
+}
+
+function SparkTipDeviceBlock({
+  deviceLabel,
+  deviceLabelColor,
+  lineColor,
+  mauColor,
+  newColor,
+  mauVal,
+  newVal,
+}: {
+  deviceLabel: string;
+  deviceLabelColor: string;
+  lineColor: string;
+  mauColor: string;
+  newColor: string;
+  mauVal: number | null;
+  newVal: number | null;
+}) {
+  const mStr = fmtSparkCell(mauVal);
+  const nStr = fmtSparkCell(newVal);
+  return (
+    <table className="event-spark-tip-tbl">
+      <thead>
+        <tr>
+          <th colSpan={2} className="event-spark-tip-th-dev">
+            <span style={{ color: deviceLabelColor }}>{deviceLabel}</span>
+          </th>
+          <th className="event-spark-tip-th-metric">MAU</th>
+          <th className="event-spark-tip-th-metric">신규사용자</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td className="event-spark-tip-sw-td">
+            <span className="event-spark-tip-sw" style={{ background: lineColor }} aria-hidden />
+          </td>
+          <td className="event-spark-tip-lbl">MAU</td>
+          <td className={`event-spark-tip-val${mStr === '—' ? ' event-spark-tip-val--na' : ''}`} style={mStr === '—' ? undefined : { color: mauColor }}>
+            {mStr}
+          </td>
+          <td className={`event-spark-tip-val${nStr === '—' ? ' event-spark-tip-val--na' : ''}`} style={nStr === '—' ? undefined : { color: newColor }}>
+            {nStr}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
 function fmtSparkAxis(n: number): string {
   if (n >= 10_000) return `${(n / 10_000).toFixed(1)}만`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}천`;
   return String(Math.round(n));
 }
 
+function EventSparkTooltipPortal({
+  tip,
+  sparkLabels,
+  metrics,
+  pcMauColor,
+  pcNewColor,
+  moMauColor,
+  moNewColor,
+}: {
+  tip: { idx: number; clientX: number; clientY: number };
+  sparkLabels: string[];
+  metrics: MetricPack;
+  pcMauColor: string;
+  pcNewColor: string;
+  moMauColor: string;
+  moNewColor: string;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef(tip);
+  tipRef.current = tip;
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const sig = `${tip.idx}|${tip.clientX}|${tip.clientY}|${sparkLabels[tip.idx] ?? ''}`;
+
+  const commit = useCallback(() => {
+    const el = cardRef.current;
+    const t = tipRef.current;
+    if (!el) return;
+    setPos(clampTooltipToViewport(el, t.clientX, t.clientY, { gap: 10, pad: 8 }));
+  }, []);
+
+  useLayoutEffect(() => {
+    commit();
+    const id = requestAnimationFrame(commit);
+    return () => cancelAnimationFrame(id);
+  }, [commit, sig]);
+
+  useEffect(() => {
+    commit();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', commit);
+    vv?.addEventListener('scroll', commit);
+    window.addEventListener('resize', commit);
+    return () => {
+      vv?.removeEventListener('resize', commit);
+      vv?.removeEventListener('scroll', commit);
+      window.removeEventListener('resize', commit);
+    };
+  }, [commit]);
+
+  const leftPx = pos?.left ?? tip.clientX + 10;
+  const topPx = pos?.top ?? tip.clientY + 8;
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      className="event-card-spark-tooltip event-card-spark-tooltip--viewport"
+      style={{
+        position: 'fixed',
+        left: leftPx,
+        top: topPx,
+        opacity: pos == null ? 0 : 1,
+        zIndex: 10050,
+        pointerEvents: 'none',
+      }}
+    >
+      <div className="event-spark-tip">
+        <div className="event-spark-tip-month">{sparkLabels[tip.idx]}</div>
+        <SparkTipDeviceBlock
+          deviceLabel="PC"
+          deviceLabelColor={pcMauColor}
+          lineColor={pcMauColor}
+          mauColor={pcMauColor}
+          newColor={pcNewColor}
+          mauVal={metrics.pcMauSeries[tip.idx]}
+          newVal={metrics.pcNewSeries[tip.idx]}
+        />
+        <hr className="event-spark-tip-sep" />
+        <SparkTipDeviceBlock
+          deviceLabel="MOBILE"
+          deviceLabelColor={moMauColor}
+          lineColor={moMauColor}
+          mauColor={moMauColor}
+          newColor={moNewColor}
+          mauVal={metrics.moMauSeries[tip.idx]}
+          newVal={metrics.moNewSeries[tip.idx]}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo: string; metrics: MetricPack }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [tip, setTip] = useState<{
     idx: number;
-    left: number;
-    top: number;
+    clientX: number;
+    clientY: number;
   } | null>(null);
 
   const vbW = 300;
@@ -255,13 +402,10 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
 
   const onLeave = () => setTip(null);
   const onMove = (i: number, e: MouseEvent) => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
     setTip({
       idx: i,
-      left: e.clientX - r.left,
-      top: e.clientY - r.top,
+      clientX: e.clientX,
+      clientY: e.clientY,
     });
   };
 
@@ -349,41 +493,17 @@ function EventWindowSpark({ color, colorMo, metrics }: { color: string; colorMo:
           />
         ))}
       </svg>
-      {tip && (() => {
-        /** 툴팁을 커서 바로 아래에 두고, 하단이 잘리면 커서 위로 옮김 */
-        const EST_W = 172;
-        const EST_H = 120;
-        const GAP = 12;
-        const wrap = wrapRef.current;
-        const cw = wrap?.clientWidth ?? 300;
-        const ch = wrap?.clientHeight ?? 100;
-        let left = tip.left + 8;
-        left = Math.max(4, Math.min(left, cw - EST_W - 4));
-        let top = tip.top + GAP;
-        if (top + EST_H > ch - 4) top = tip.top - EST_H - GAP;
-        top = Math.max(4, Math.min(top, ch - EST_H - 4));
-        return (
-        <div
-          className="event-card-spark-tooltip"
-          style={{ left, top }}
-        >
-          <div className="event-card-spark-tooltip-title">{sparkLabels[tip.idx]}</div>
-          {(
-            [
-              ['PC MAU', fmtSparkInt(metrics.pcMauSeries[tip.idx])],
-              ['PC 신규사용자', fmtSparkInt(metrics.pcNewSeries[tip.idx])],
-              ['MOBILE MAU', fmtSparkInt(metrics.moMauSeries[tip.idx])],
-              ['MOBILE 신규사용자', fmtSparkInt(metrics.moNewSeries[tip.idx])],
-            ] as const
-          ).map(([k, v]) => (
-            <div key={k} className="event-card-spark-tooltip-row">
-              <span>{k}</span>
-              <span>{v}</span>
-            </div>
-          ))}
-        </div>
-        );
-      })()}
+      {tip ? (
+        <EventSparkTooltipPortal
+          tip={tip}
+          sparkLabels={sparkLabels}
+          metrics={metrics}
+          pcMauColor={color}
+          pcNewColor={SERIES_STYLE['NE Tutor 신규사용자'].color}
+          moMauColor={colorMo}
+          moNewColor={colorMo}
+        />
+      ) : null}
     </div>
   );
 }

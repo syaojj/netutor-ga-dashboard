@@ -2,12 +2,14 @@
  * 전년 동월 비교: 검색 구간의 각 월과 전년 동월을 한 축에 겹쳐 표시.
  * PC·Mobile 각각 MAU·신규를 동일 Y축(명)으로 표시. 서비스 단일 선택.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
 import type { EbookMonthlyRow, MonthlyByDeviceRow } from '../types';
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
+import { clampTooltipToViewport } from '../utils/viewportTooltipPosition';
 
 /** 전년 동월 서비스 탭 순서(데이터가 있는 항목만 표시). LAW E-Book·부가자료는 ebookMonthly에서 합성 행으로 채움 */
 const YOY_SERVICE_ORDER: readonly string[] = [
@@ -154,7 +156,7 @@ function readMauNew(
   return { mau, neu };
 }
 
-type YoyHoverTip = { device: DeviceSide; idx: number; left: number; top: number };
+type YoyHoverTip = { device: DeviceSide; idx: number; clientX: number; clientY: number };
 
 function YoyHoverCard({
   tip,
@@ -162,16 +164,48 @@ function YoyHoverCard({
   selectedService,
   byMonth,
   logScale,
-  containerEl,
 }: {
   tip: YoyHoverTip;
   months: string[];
   selectedService: string;
   byMonth: Map<string, Map<string, MonthlyByDeviceRow>>;
   logScale: boolean;
-  containerEl: HTMLDivElement | null;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef(tip);
+  tipRef.current = tip;
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
   const m = months[tip.idx];
+  const sig = `${tip.idx}|${tip.device}|${selectedService}|${m ?? ''}|${tip.clientX}|${tip.clientY}`;
+
+  const commitTooltipPos = useCallback(() => {
+    const card = cardRef.current;
+    const t = tipRef.current;
+    if (!card) return;
+    const { left, top } = clampTooltipToViewport(card, t.clientX, t.clientY);
+    setPos({ left, top });
+  }, []);
+
+  useLayoutEffect(() => {
+    commitTooltipPos();
+    const id = requestAnimationFrame(commitTooltipPos);
+    return () => cancelAnimationFrame(id);
+  }, [commitTooltipPos, sig]);
+
+  useEffect(() => {
+    commitTooltipPos();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', commitTooltipPos);
+    vv?.addEventListener('scroll', commitTooltipPos);
+    window.addEventListener('resize', commitTooltipPos);
+    return () => {
+      vv?.removeEventListener('resize', commitTooltipPos);
+      vv?.removeEventListener('scroll', commitTooltipPos);
+      window.removeEventListener('resize', commitTooltipPos);
+    };
+  }, [commitTooltipPos]);
+
   if (!m) return null;
   const pm = priorYearMonth(m);
   const svc = selectedService;
@@ -193,43 +227,111 @@ function YoyHoverCard({
 
   const deviceLabel = tip.device === 'pc' ? 'PC' : 'Mobile';
   const svcTitle = svc;
-  const items: { title: string; monthRef: string; val: number | null; color: string }[] = [
-    { title: 'MAU 선택월', monthRef: m, val: mauC, color: YOY_METRIC_COLORS.mauCurrent },
-    { title: 'MAU 전년동월', monthRef: pm, val: mauP, color: YOY_METRIC_COLORS.mauPrior },
-    { title: '신규사용자 선택월', monthRef: m, val: newC, color: YOY_METRIC_COLORS.newCurrent },
-    { title: '신규사용자 전년동월', monthRef: pm, val: newP, color: YOY_METRIC_COLORS.newPrior },
-  ];
 
-  const rect = containerEl?.getBoundingClientRect();
-  const containerW = rect?.width ?? 400;
-  const estW = 300;
-  let left = tip.left + 14;
-  const top = Math.max(8, Math.min(tip.top - 8, (rect?.height ?? 400) - 24));
-  if (left + estW > containerW - 8) left = Math.max(8, tip.left - estW - 14);
+  const fmtCell = (v: number | null) =>
+    v != null && Number.isFinite(v) ? `${formatHoverMetric(v)}명` : '—';
+
+  const leftPx = pos?.left ?? tip.clientX + 10;
+  const topPx = pos?.top ?? tip.clientY + 8;
 
   return (
     <div
-      className="trend-hover-card yoy-hover-card"
-      style={{ position: 'absolute', left, top, zIndex: 90, pointerEvents: 'none' }}
+      ref={cardRef}
+      className="trend-hover-card yoy-hover-card trend-hover-card--viewport"
+      style={{
+        position: 'fixed',
+        left: leftPx,
+        top: topPx,
+        opacity: pos == null ? 0 : 1,
+        zIndex: 10050,
+        pointerEvents: 'none',
+      }}
       role="tooltip"
     >
-      <div className="trend-hover-title">{formatMonthTick(m)}</div>
-      <div className="yoy-hover-subtitle">
-        {svcTitle} · {deviceLabel}
-      </div>
-      <div className="yoy-hover-metrics">
-        {items.map((it) => (
-          <div key={it.title} className="yoy-hover-metric-row">
-            <span className="yoy-hover-metric-swatch" style={{ background: it.color }} />
-            <div className="yoy-hover-metric-body">
-              <div className="yoy-hover-metric-title">{it.title}</div>
-              <div className="yoy-hover-metric-meta">{formatMonthTick(it.monthRef)}</div>
-            </div>
-            <div className="yoy-hover-metric-value">
-              {it.val != null && Number.isFinite(it.val) ? `${formatHoverMetric(it.val)}명` : '—'}
-            </div>
+      <div className="yoy-hover-layout">
+        <span className="yoy-hover-arrow" aria-hidden />
+        <header className="yoy-hover-head">
+          <span className="yoy-hover-head-date">{formatMonthTick(m)}</span>
+          <span className="yoy-hover-head-meta">
+            {svcTitle} · {deviceLabel}
+          </span>
+        </header>
+
+        <section className="yoy-hover-sec" aria-label="MAU">
+          <h4 className="yoy-hover-sec-title" style={{ color: YOY_METRIC_COLORS.mauPrior }}>
+            <span className="yoy-hover-sec-pipe" aria-hidden>
+              |
+            </span>{' '}
+            MAU
+          </h4>
+          <div className="yoy-hover-line">
+            <span
+              className="yoy-hover-line-swatch yoy-hover-line-swatch--solid"
+              style={{ background: YOY_METRIC_COLORS.mauCurrent }}
+              aria-hidden
+            />
+            <span className="yoy-hover-line-label">선택월</span>
+            <span
+              className="yoy-hover-line-val"
+              style={{ color: fmtCell(mauC) === '—' ? 'var(--muted)' : YOY_METRIC_COLORS.mauCurrent }}
+            >
+              {fmtCell(mauC)}
+            </span>
           </div>
-        ))}
+          <div className="yoy-hover-line">
+            <span
+              className="yoy-hover-line-swatch yoy-hover-line-swatch--dash"
+              style={{ borderColor: YOY_METRIC_COLORS.mauPrior }}
+              aria-hidden
+            />
+            <span className="yoy-hover-line-label">전년동월</span>
+            <span
+              className="yoy-hover-line-val"
+              style={{ color: fmtCell(mauP) === '—' ? 'var(--muted)' : YOY_METRIC_COLORS.mauPrior }}
+            >
+              {fmtCell(mauP)}
+            </span>
+          </div>
+        </section>
+
+        <hr className="yoy-hover-sep" />
+
+        <section className="yoy-hover-sec" aria-label="신규사용자">
+          <h4 className="yoy-hover-sec-title" style={{ color: YOY_METRIC_COLORS.newPrior }}>
+            <span className="yoy-hover-sec-pipe" aria-hidden>
+              |
+            </span>{' '}
+            신규사용자
+          </h4>
+          <div className="yoy-hover-line">
+            <span
+              className="yoy-hover-line-swatch yoy-hover-line-swatch--solid"
+              style={{ background: YOY_METRIC_COLORS.newCurrent }}
+              aria-hidden
+            />
+            <span className="yoy-hover-line-label">선택월</span>
+            <span
+              className="yoy-hover-line-val"
+              style={{ color: fmtCell(newC) === '—' ? 'var(--muted)' : YOY_METRIC_COLORS.newCurrent }}
+            >
+              {fmtCell(newC)}
+            </span>
+          </div>
+          <div className="yoy-hover-line">
+            <span
+              className="yoy-hover-line-swatch yoy-hover-line-swatch--dash"
+              style={{ borderColor: YOY_METRIC_COLORS.newPrior }}
+              aria-hidden
+            />
+            <span className="yoy-hover-line-label">전년동월</span>
+            <span
+              className="yoy-hover-line-val"
+              style={{ color: fmtCell(newP) === '—' ? 'var(--muted)' : YOY_METRIC_COLORS.newPrior }}
+            >
+              {fmtCell(newP)}
+            </span>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -549,8 +651,7 @@ export function YoYCompareChartsGrid(props: {
         responsive: true,
         displaylogo: false,
         locale: 'ko',
-        displayModeBar: true,
-        modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d', 'toImage'],
+        displayModeBar: false,
         doubleClick: 'reset+autosize',
       });
 
@@ -564,14 +665,11 @@ export function YoYCompareChartsGrid(props: {
         if (pt == null || typeof pt.pointIndex !== 'number') return;
         const ev = data.event;
         if (!ev) return;
-        const shell = shellRef.current;
-        if (!shell) return;
-        const rect = shell.getBoundingClientRect();
         setYoyHoverTip({
           device: deviceForChart,
           idx: pt.pointIndex,
-          left: ev.clientX - rect.left,
-          top: ev.clientY - rect.top,
+          clientX: ev.clientX,
+          clientY: ev.clientY,
         });
       };
       const handleUnhover = () => setYoyHoverTip(null);
@@ -664,16 +762,17 @@ export function YoYCompareChartsGrid(props: {
           </div>
         ))}
       </div>
-      {yoyHoverTip && (
-        <YoyHoverCard
-          tip={yoyHoverTip}
-          months={months}
-          selectedService={selectedService}
-          byMonth={byMonth}
-          logScale={props.logScale}
-          containerEl={shellRef.current}
-        />
-      )}
+      {yoyHoverTip &&
+        createPortal(
+          <YoyHoverCard
+            tip={yoyHoverTip}
+            months={months}
+            selectedService={selectedService}
+            byMonth={byMonth}
+            logScale={props.logScale}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

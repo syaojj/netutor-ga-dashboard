@@ -21,8 +21,7 @@ const YEARLY_PLOT_CONFIG: Partial<Config> = {
   responsive: true,
   displaylogo: false,
   locale: 'ko',
-  displayModeBar: true,
-  modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+  displayModeBar: false,
   doubleClick: 'reset+autosize',
 };
 
@@ -723,7 +722,7 @@ export function TrendChartYearly(props: {
               type="button"
               className="btn trend-fs-btn"
               onClick={toggleFullscreen}
-              title="Plotly 툴바의 확대 아이콘은 축 자동 맞춤입니다. 여기서 차트 영역 전체화면을 켜고 끕니다."
+              title="차트 영역 전체 화면을 켜고 끕니다. 차트에서 더블클릭하면 축이 자동 맞춤됩니다."
             >
               {isFs ? '전체 화면 종료' : '전체 화면'}
             </button>

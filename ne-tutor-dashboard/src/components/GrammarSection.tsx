@@ -160,7 +160,7 @@ export function GrammarSection(props: {
     Plotly.newPlot(el, barData.traces, barData.layout, {
       responsive: true,
       displaylogo: false,
-      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+      displayModeBar: false,
     });
     return () => Plotly.purge(el);
   }, [barData]);
@@ -171,7 +171,7 @@ export function GrammarSection(props: {
     Plotly.newPlot(el, lineData.traces, lineData.layout, {
       responsive: true,
       displaylogo: false,
-      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+      displayModeBar: false,
     });
     return () => Plotly.purge(el);
   }, [lineData, props.hasOrders]);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EbookMonthlyRow, MonthlyByDeviceRow } from '../types';
 import { listMonthsBetweenInclusive } from '../utils/monthRange';
+import { deviceFromPcMoFlags, mauForDevice, newForDevice } from '../utils/monthlyTrend';
 import { SERIES_STYLE, type TrendSeriesName } from './trendSeriesConfig';
 
 const SHARE_SERVICES: { key: string; label: string }[] = [
@@ -47,34 +48,7 @@ const MONTHLY_AVG_HELP_TOOLTIP =
 const SHARE_PCT_LAYER_TITLE = 'NE Tutor 월평균 대비 비중';
 
 const SHARE_PCT_LAYER_BODY =
-  '카드에 표시된 비율(%)은 해당 서비스(또는 E-Book·부가자료)의 구간 월평균 MAU·신규사용자가 NE Tutor 월평균 대비 어느 정도인지 나타냅니다. 데이터가 존재하는 월만 평균에 포함됩니다.';
-
-/** 차트·원시와 동일한 디바이스 합산 규칙. PC+MO인데 모바일 결측(null)이면 해당 월 합계는 null */
-function mauForSelection(r: MonthlyByDeviceRow, showPC: boolean, showMobile: boolean): number | null {
-  if (showPC && showMobile) {
-    if (r.moMau == null) return null;
-    if (r.pcMau == null) return null;
-    return r.pcMau + r.moMau;
-  }
-  if (showPC && !showMobile) return r.pcMau;
-  if (!showPC && showMobile) return r.moMau;
-  return null;
-}
-
-function newForSelection(r: MonthlyByDeviceRow, showPC: boolean, showMobile: boolean): number | null {
-  if (showPC && showMobile) {
-    if (r.moNew == null || r.pcNew == null) return null;
-    let v = r.pcNew + r.moNew;
-    if (r.service === '통합회원') {
-      if (r.teacherNew == null) return null;
-      v += r.teacherNew;
-    }
-    return v;
-  }
-  if (showPC && !showMobile) return r.pcNew;
-  if (!showPC && showMobile) return r.moNew;
-  return null;
-}
+  '카드에 표시된 비율(%)은 해당 서비스의 구간 월평균 MAU·신규사용자가 NE Tutor 월평균 대비 어느 정도인지 나타냅니다. 데이터가 존재하는 월만 평균에 포함됩니다.\n\nE-Book·부가자료(LAW)는 PC 전용 지표입니다. Mobile만 선택한 경우에는 표시하지 않으며, PC 또는 PC+Mobile일 때만 월평균을 보여 줍니다. NE Tutor 대비 %의 분모는 항상 NE Tutor PC MAU 월평균(해당 구간·데이터 있는 월)입니다.';
 
 function deviceHint(showPC: boolean, showMobile: boolean): string {
   if (showPC && showMobile) return 'PC+Mobile 기준 · 데이터 존재 월 평균';
@@ -89,7 +63,7 @@ const SUP_MAU_COLOR = SERIES_STYLE['부가자료(개별) MAU'].color;
 /**
  * 월별 구간·PC/Mobile 선택에 따른 요약 카드.
  * NE Tutor를 비중 기준으로 서비스별 월평균과 비중(%)을 표시.
- * E-Book·부가자료(LAW)는 월간 xlsx E-Book 시트 기준 구간 월평균 MAU와 NE Tutor 월평균 MAU 대비 %를 표시합니다.
+ * E-Book·부가자료(LAW)는 PC 선택 시에만 월평균·차트와 동일하게 표시합니다. NE Tutor 대비 % 분모는 NE Tutor PC MAU 월평균입니다.
  */
 export function MonthlyTrendSummaryCards(props: {
   monthlyByDevice: readonly MonthlyByDeviceRow[];
@@ -131,6 +105,7 @@ export function MonthlyTrendSummaryCards(props: {
   const stats = useMemo(() => {
     const months = listMonthsBetweenInclusive(props.rangeStart, props.rangeEnd);
     const { showPC, showMobile } = props;
+    const device = deviceFromPcMoFlags(showPC, showMobile);
     const byMonth = new Map<string, Map<string, MonthlyByDeviceRow>>();
     for (const r of props.monthlyByDevice) {
       if (!byMonth.has(r.month)) byMonth.set(r.month, new Map());
@@ -149,8 +124,8 @@ export function MonthlyTrendSummaryCards(props: {
       const m = byMonth.get(mo);
       const tutor = m?.get('NE Tutor');
       if (tutor) {
-        const mv = mauForSelection(tutor, showPC, showMobile);
-        const nv = newForSelection(tutor, showPC, showMobile);
+        const mv = mauForDevice(tutor, device);
+        const nv = newForDevice(tutor, device);
         if (mv != null && nv != null) {
           sumTutorMau += mv;
           sumTutorNew += nv;
@@ -160,8 +135,8 @@ export function MonthlyTrendSummaryCards(props: {
       for (const { key } of SHARE_SERVICES) {
         const row = m?.get(key);
         if (!row) continue;
-        const mv = mauForSelection(row, showPC, showMobile);
-        const nv = newForSelection(row, showPC, showMobile);
+        const mv = mauForDevice(row, device);
+        const nv = newForDevice(row, device);
         if (mv != null) {
           sumSvcMau.set(key, (sumSvcMau.get(key) ?? 0) + mv);
           nSvcMau.set(key, (nSvcMau.get(key) ?? 0) + 1);
@@ -175,6 +150,20 @@ export function MonthlyTrendSummaryCards(props: {
 
     const avgTutorMau = nTutor > 0 ? sumTutorMau / nTutor : null;
     const avgTutorNew = nTutor > 0 ? sumTutorNew / nTutor : null;
+
+    /** NE Tutor PC MAU 월평균 — E-Book·부가자료(LAW) % 분모 (LAW는 PC 전용) */
+    let sumTutorMauPcDenom = 0;
+    let nTutorMauPcDenom = 0;
+    for (const mo of months) {
+      const tutorPc = byMonth.get(mo)?.get('NE Tutor');
+      if (!tutorPc) continue;
+      const vm = mauForDevice(tutorPc, 'PC');
+      if (vm != null) {
+        sumTutorMauPcDenom += vm;
+        nTutorMauPcDenom += 1;
+      }
+    }
+    const avgTutorMauPcForLaw = nTutorMauPcDenom > 0 ? sumTutorMauPcDenom / nTutorMauPcDenom : null;
 
     const shares = SHARE_SERVICES.map(({ key, label }) => {
       const nM = nSvcMau.get(key) ?? 0;
@@ -197,16 +186,18 @@ export function MonthlyTrendSummaryCards(props: {
     let nUser = 0;
     let sumInd = 0;
     let nInd = 0;
-    for (const mo of months) {
-      const row = ebookByMonth.get(mo);
-      if (!row) continue;
-      if (row.lawEbookUniqueUsers != null) {
-        sumUser += row.lawEbookUniqueUsers;
-        nUser += 1;
-      }
-      if (row.lawSupplementaryIndividualDownloads != null) {
-        sumInd += row.lawSupplementaryIndividualDownloads;
-        nInd += 1;
+    if (showPC) {
+      for (const mo of months) {
+        const row = ebookByMonth.get(mo);
+        if (!row) continue;
+        if (row.lawEbookUniqueUsers != null) {
+          sumUser += row.lawEbookUniqueUsers;
+          nUser += 1;
+        }
+        if (row.lawSupplementaryIndividualDownloads != null) {
+          sumInd += row.lawSupplementaryIndividualDownloads;
+          nInd += 1;
+        }
       }
     }
 
@@ -214,12 +205,18 @@ export function MonthlyTrendSummaryCards(props: {
     const avgSupInd = nInd > 0 ? sumInd / nInd : null;
 
     const ebookMauPct =
-      avgEbookUsers != null && avgTutorMau != null && avgTutorMau > 0
-        ? (avgEbookUsers / avgTutorMau) * 100
+      showPC &&
+      avgEbookUsers != null &&
+      avgTutorMauPcForLaw != null &&
+      avgTutorMauPcForLaw > 0
+        ? (avgEbookUsers / avgTutorMauPcForLaw) * 100
         : null;
     const supMauPct =
-      avgSupInd != null && avgTutorMau != null && avgTutorMau > 0
-        ? (avgSupInd / avgTutorMau) * 100
+      showPC &&
+      avgSupInd != null &&
+      avgTutorMauPcForLaw != null &&
+      avgTutorMauPcForLaw > 0
+        ? (avgSupInd / avgTutorMauPcForLaw) * 100
         : null;
 
     return {
@@ -344,14 +341,21 @@ export function MonthlyTrendSummaryCards(props: {
           <div className="monthly-trend-card-metrics-row">
             <div className="monthly-trend-card-metric-half">
               <div className="monthly-trend-card-kicker">MAU</div>
-              <div className="monthly-trend-card-value-stack">
-                <span className="monthly-trend-card-value-num" style={{ color: SUP_MAU_COLOR }}>
-                  {stats.avgSupInd != null ? fmtInt(stats.avgSupInd) : '—'}
-                </span>
-                <span className="monthly-trend-card-value-pct" style={{ color: SUP_MAU_COLOR }}>
-                  {fmtPct(stats.supMauPct)}
-                </span>
-              </div>
+              {props.showPC ? (
+                <div className="monthly-trend-card-value-stack">
+                  <span className="monthly-trend-card-value-num" style={{ color: SUP_MAU_COLOR }}>
+                    {stats.avgSupInd != null ? fmtInt(stats.avgSupInd) : '—'}
+                  </span>
+                  <span className="monthly-trend-card-value-pct" style={{ color: SUP_MAU_COLOR }}>
+                    {fmtPct(stats.supMauPct)}
+                  </span>
+                </div>
+              ) : (
+                <div className="monthly-trend-card-value-stack">
+                  <span className="monthly-trend-card-value-num">—</span>
+                  <span className="monthly-trend-card-value-pct monthly-trend-card-value-pct--na">PC 체크 시 표시</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -374,14 +378,21 @@ export function MonthlyTrendSummaryCards(props: {
           <div className="monthly-trend-card-metrics-row">
             <div className="monthly-trend-card-metric-half">
               <div className="monthly-trend-card-kicker">MAU</div>
-              <div className="monthly-trend-card-value-stack">
-                <span className="monthly-trend-card-value-num" style={{ color: EBOOK_MAU_COLOR }}>
-                  {stats.avgEbookUsers != null ? fmtInt(stats.avgEbookUsers) : '—'}
-                </span>
-                <span className="monthly-trend-card-value-pct" style={{ color: EBOOK_MAU_COLOR }}>
-                  {fmtPct(stats.ebookMauPct)}
-                </span>
-              </div>
+              {props.showPC ? (
+                <div className="monthly-trend-card-value-stack">
+                  <span className="monthly-trend-card-value-num" style={{ color: EBOOK_MAU_COLOR }}>
+                    {stats.avgEbookUsers != null ? fmtInt(stats.avgEbookUsers) : '—'}
+                  </span>
+                  <span className="monthly-trend-card-value-pct" style={{ color: EBOOK_MAU_COLOR }}>
+                    {fmtPct(stats.ebookMauPct)}
+                  </span>
+                </div>
+              ) : (
+                <div className="monthly-trend-card-value-stack">
+                  <span className="monthly-trend-card-value-num">—</span>
+                  <span className="monthly-trend-card-value-pct monthly-trend-card-value-pct--na">PC 체크 시 표시</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

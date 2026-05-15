@@ -74,11 +74,11 @@ export interface EbookMonthlyRow {
   monthKey: string;
   /** E-book 클릭 수(중복포함) — 빈 셀은 null */
   clicks: number | null;
-  /** LAW · E-Book 이용자수(중복제거) */
+  /** LAW · E-Book 이용자수(중복제거) — 월별 추이에서는 PC 선택 시에만 집계·표시 */
   lawEbookUniqueUsers?: number | null;
   /** LAW · 부가자료 전체 다운로드(중복포함) */
   lawSupplementaryFullDownloads?: number | null;
-  /** LAW · 부가자료 개별 다운로드(중복제거) */
+  /** LAW · 부가자료 개별 다운로드(중복제거) — 월별 추이에서는 PC 선택 시에만 집계·표시 */
   lawSupplementaryIndividualDownloads?: number | null;
 }
 

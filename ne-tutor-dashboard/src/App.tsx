@@ -643,7 +643,8 @@ export default function App() {
 
       <section ref={yoySectionRef} id="yoy-compare" className="section section--yoy-analysis">
         <h2 className="section-title">전년 동월 비교</h2>
-        <div className="trend-subsection">
+        <div className="trend-subsection yoy-query-subsection">
+          <TrendSubsectionTitle>조회</TrendSubsectionTitle>
           <MonthlyTrendControls
             ariaLabel="전년 동월 비교 — 기간 검색"
             hideDeviceToggles
@@ -667,10 +668,10 @@ export default function App() {
             onLogScale={setYoyLogScale}
           />
         </div>
-        <div className="trend-section-group">
-          <div className="trend-group-node yoy-chart-section-node">
+        <div className="yoy-chart-events-split">
+          <div className="trend-group-node yoy-chart-section-node yoy-split-chart-col">
             <div className="trend-group-main trend-subsection-panel">
-              <TrendSubsectionTitle>선택 기간 VS 전년동월 추이</TrendSubsectionTitle>
+              <TrendSubsectionTitle>선택 기간 VS 전년 동월 추이</TrendSubsectionTitle>
               <p className="yoy-chart-section-lede">
                 실선은 선택 기간, 점선은 전년 동일 기간입니다. 같은 월 기준으로 겹쳐 비교합니다. (예: 2024-03 VS 2023-03)
               </p>
@@ -702,17 +703,15 @@ export default function App() {
             </div>
           </div>
 
-          <div className="yoy-impact-events-row">
-            <div className="yoy-event-cards-aside trend-group-node">
-              <div className="trend-group-main trend-subsection-panel">
-                <TrendSubsectionTitle>서비스 이벤트 전후 3개월 평균 비교</TrendSubsectionTitle>
-                <NeTutorEventCardsPanel
-                  monthlyByDevice={monthlyByDevice}
-                  events={ECOSYSTEM_EVENTS}
-                  rangeStart={yoyRs}
-                  rangeEnd={yoyRe}
-                />
-              </div>
+          <div className="yoy-event-cards-aside trend-group-node yoy-split-events-col">
+            <div className="trend-group-main trend-subsection-panel">
+              <TrendSubsectionTitle>서비스 이벤트 전후 3개월 평균 비교</TrendSubsectionTitle>
+              <NeTutorEventCardsPanel
+                monthlyByDevice={monthlyByDevice}
+                events={ECOSYSTEM_EVENTS}
+                rangeStart={yoyRs}
+                rangeEnd={yoyRe}
+              />
             </div>
           </div>
         </div>

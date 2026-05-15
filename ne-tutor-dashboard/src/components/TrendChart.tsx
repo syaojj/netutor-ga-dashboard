@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
+import { createPortal } from 'react-dom';
 import Plotly from 'plotly.js-dist-min';
 import type { Config, Data, Layout, Shape } from 'plotly.js';
 import type { EbookMonthlyRow, EcosystemEvent, MonthlyByDeviceRow, MonthlyMetricRow } from '../types';
 import { assignEventAnnotationLanes, eventAnnotationTopMarginPx, EVENT_ANN_LANE_SPACING_PX, formatEventAnnotationHtml } from '../utils/trendEventLayout';
+import { clampTooltipToViewport } from '../utils/viewportTooltipPosition';
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
 import {
@@ -57,7 +67,7 @@ interface HoverServiceData {
   showMauTooltip: boolean;
   /** 범례 체크된 신규(또는 통합회원) 시리즈만 툴팁 신규 행 표시 */
   showNewTooltip: boolean;
-  /** PC/MO 분해 없는 월간 LAW 단일 MAU(E-Book·부가자료) */
+  /** PC/MO 분해 없는 월간 LAW MAU(E-Book·부가자료) — PC 선택 시에만 차트에 반영(Mobile 단독 시 미표시). */
   aggregateMau?: number | null;
 }
 
@@ -67,14 +77,21 @@ interface HoverState {
   primary: HoverServiceData[];
   /** 하단 2-컬럼 블록 (다른 서비스들) */
   secondary: HoverServiceData[];
-  /** 셸 기준 좌표 */
-  left: number;
-  top: number;
+  /** 뷰포트 기준 포인터 — 말풍선을 fixed 로 두고 화면 밖만 피함 */
+  clientX: number;
+  clientY: number;
 }
 
-function fmtIntKo(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('ko-KR').format(n);
+/** 호버 표 전용 — 빈 값은 하이픈 */
+function fmtHoverCell(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '-';
+  return new Intl.NumberFormat('ko-KR').format(Math.round(n));
+}
+
+function hoverRowLabel(block: HoverServiceData): string {
+  if (block.name === '부가자료(개별) MAU') return '부가자료(개별)';
+  if (block.name === 'E-Book MAU') return 'E-Book';
+  return block.name;
 }
 
 /** 시리즈명 → MAU(실선) 색상 */
@@ -83,6 +100,15 @@ function mauColorForService(svc: string): string {
   if (svc === '통합회원') return SERIES_STYLE['통합회원'].color;
   const key = `${svc} MAU` as TrendSeriesName;
   return SERIES_STYLE[key]?.color ?? '#94a3b8';
+}
+
+/** 호버 표 한 행 — 신규(·통합회원) 열에 쓸 색 (MAU 열은 block.color) */
+function newColorForHoverRow(block: HoverServiceData): string {
+  if (block.name === 'NE Tutor') return SERIES_STYLE['NE Tutor 신규사용자'].color;
+  if (block.name === '통합회원') return SERIES_STYLE['통합회원'].color;
+  if (block.name === '부가자료(개별) MAU' || block.name === 'E-Book MAU') return block.color;
+  const key = `${block.name} 신규사용자` as TrendSeriesName;
+  return SERIES_STYLE[key]?.color ?? block.color;
 }
 
 function monthKeyFromAnchor(iso: string): string {
@@ -176,6 +202,22 @@ export function TrendChart(props: {
   const [isFs, setIsFs] = useState(false);
   const [hover, setHover] = useState<HoverState | null>(null);
 
+  /** LAW 시리즈는 PC 미선택 시 표시 끔 — 막대/선과 동일 정책 */
+  useEffect(() => {
+    if (props.showPC) return;
+    setVisible((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const n of TREND_LAW_MAU_SERIES) {
+        if (next[n] !== false) {
+          next[n] = false;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [props.showPC]);
+
   const seriesData = useMemo(() => {
     const months = monthsInRange(props.rangeStart, props.rangeEnd);
     const by = new Map<string, Map<string, MonthlyMetricRow>>();
@@ -190,10 +232,15 @@ export function TrendChart(props: {
     const newY = (svc: string) => months.map((mo) => by.get(svc)?.get(mo)?.newUsersSum ?? null);
 
     const ebookByMonth = new Map(props.ebookMonthly.map((r) => [r.monthKey, r]));
+    const lawActive = props.showPC;
     const ebookMauY = () =>
-      months.map((mo) => ebookByMonth.get(mo)?.lawEbookUniqueUsers ?? null);
+      lawActive
+        ? months.map((mo) => ebookByMonth.get(mo)?.lawEbookUniqueUsers ?? null)
+        : months.map(() => null);
     const supIndMauY = () =>
-      months.map((mo) => ebookByMonth.get(mo)?.lawSupplementaryIndividualDownloads ?? null);
+      lawActive
+        ? months.map((mo) => ebookByMonth.get(mo)?.lawSupplementaryIndividualDownloads ?? null)
+        : months.map(() => null);
 
     const series: { name: TrendSeriesName; y: (number | null)[] }[] = [
       { name: 'NE Tutor MAU', y: mauY('NE Tutor') },
@@ -208,7 +255,7 @@ export function TrendChart(props: {
     ];
 
     return { months, series, markerSize };
-  }, [props.monthly, props.ebookMonthly, props.rangeStart, props.rangeEnd]);
+  }, [props.monthly, props.ebookMonthly, props.rangeStart, props.rangeEnd, props.showPC]);
 
   /**
    * 이벤트 말풍선의 레인 수 사전 계산. layout 의 top margin 과 차트 div 높이를 모두 결정한다.
@@ -676,40 +723,42 @@ export function TrendChart(props: {
       );
 
       const ebookByMonth = new Map(props.ebookMonthly.map((r) => [r.monthKey, r]));
-      const lawRow = ebookByMonth.get(xv);
       const lawBlocks: HoverServiceData[] = [];
-      if (lawRow) {
-        for (const lawName of TREND_LAW_MAU_SERIES) {
-          if (!isOn(lawName)) continue;
-          if (lawName === '부가자료(개별) MAU' && lawRow.lawSupplementaryIndividualDownloads != null) {
-            lawBlocks.push({
-              name: '부가자료(개별) MAU',
-              color: SERIES_STYLE['부가자료(개별) MAU'].color,
-              pcMau: null,
-              moMau: null,
-              pcNew: null,
-              moNew: null,
-              hasMau: true,
-              newOnly: false,
-              showMauTooltip: true,
-              showNewTooltip: false,
-              aggregateMau: lawRow.lawSupplementaryIndividualDownloads,
-            });
-          }
-          if (lawName === 'E-Book MAU' && lawRow.lawEbookUniqueUsers != null) {
-            lawBlocks.push({
-              name: 'E-Book MAU',
-              color: SERIES_STYLE['E-Book MAU'].color,
-              pcMau: null,
-              moMau: null,
-              pcNew: null,
-              moNew: null,
-              hasMau: true,
-              newOnly: false,
-              showMauTooltip: true,
-              showNewTooltip: false,
-              aggregateMau: lawRow.lawEbookUniqueUsers,
-            });
+      if (props.showPC) {
+        const lawRow = ebookByMonth.get(xv);
+        if (lawRow) {
+          for (const lawName of TREND_LAW_MAU_SERIES) {
+            if (!isOn(lawName)) continue;
+            if (lawName === '부가자료(개별) MAU' && lawRow.lawSupplementaryIndividualDownloads != null) {
+              lawBlocks.push({
+                name: '부가자료(개별) MAU',
+                color: SERIES_STYLE['부가자료(개별) MAU'].color,
+                pcMau: null,
+                moMau: null,
+                pcNew: null,
+                moNew: null,
+                hasMau: true,
+                newOnly: false,
+                showMauTooltip: true,
+                showNewTooltip: false,
+                aggregateMau: lawRow.lawSupplementaryIndividualDownloads,
+              });
+            }
+            if (lawName === 'E-Book MAU' && lawRow.lawEbookUniqueUsers != null) {
+              lawBlocks.push({
+                name: 'E-Book MAU',
+                color: SERIES_STYLE['E-Book MAU'].color,
+                pcMau: null,
+                moMau: null,
+                pcNew: null,
+                moNew: null,
+                hasMau: true,
+                newOnly: false,
+                showMauTooltip: true,
+                showNewTooltip: false,
+                aggregateMau: lawRow.lawEbookUniqueUsers,
+              });
+            }
           }
         }
       }
@@ -718,12 +767,13 @@ export function TrendChart(props: {
 
       if (primary.length === 0 && secondary.length === 0) return;
 
-      const shell = shellRef.current;
-      if (!shell) return;
-      const rect = shell.getBoundingClientRect();
-      const mx = data.event.clientX - rect.left;
-      const my = data.event.clientY - rect.top;
-      setHover({ x: xv, primary, secondary, left: mx, top: my });
+      setHover({
+        x: xv,
+        primary,
+        secondary,
+        clientX: data.event.clientX,
+        clientY: data.event.clientY,
+      });
     };
     const handleUnhover = () => setHover(null);
 
@@ -762,16 +812,17 @@ export function TrendChart(props: {
 
   const renderVisibilityPill = useCallback(
     (name: TrendSeriesName, mode: 'mau' | 'new', label: string) => {
+      const lawBlocked = TREND_LAW_MAU_SERIES.includes(name) && !props.showPC;
       const st = SERIES_STYLE[name];
-      const on = visible[name] !== false;
-      const disabled = TREND_NEW_TOGGLE_DISABLED.has(name);
+      const on = !lawBlocked && visible[name] !== false;
+      const disabled = TREND_NEW_TOGGLE_DISABLED.has(name) || lawBlocked;
       const cssVars = { '--mau-trend-pill': st.color } as CSSProperties;
       return (
         <button
           type="button"
           className={`mau-trend-pill mau-trend-pill--${mode}${on && !disabled ? ' mau-trend-pill--on' : ' mau-trend-pill--off'}`}
           style={cssVars}
-          title={name}
+          title={lawBlocked ? 'LAW(E-Book·부가자료)는 PC 선택 시에만 표시됩니다' : name}
           aria-pressed={on && !disabled}
           disabled={disabled}
           onClick={() => toggleSeries(name)}
@@ -781,7 +832,7 @@ export function TrendChart(props: {
         </button>
       );
     },
-    [visible, toggleSeries],
+    [visible, toggleSeries, props.showPC],
   );
 
   return (
@@ -883,74 +934,178 @@ export function TrendChart(props: {
           <div ref={plotRef} className="trend-chart-plot-inner" style={{ width: '100%', height: chartHeight }} />
         </div>
       </div>
-      {hover && (hover.primary.length > 0 || hover.secondary.length > 0) && (
-        <HoverCard
-          hover={hover}
-          containerEl={shellRef.current}
-          showPC={props.showPC}
-          showMobile={props.showMobile}
-        />
-      )}
+      {hover &&
+        (hover.primary.length > 0 || hover.secondary.length > 0) &&
+        createPortal(
+          <HoverCard hover={hover} showPC={props.showPC} showMobile={props.showMobile} />,
+          document.body,
+        )}
     </div>
   );
 }
 
 /**
- * 차트 위에 떠 있는 커스텀 HTML 툴팁.
- * - 상단(primary): NE Tutor + 통합회원 — 강조 표시, 2-컬럼
- * - 하단(secondary): 나머지 서비스 — 2-컬럼 그리드
- * - 각 블록은 라운드 컬러 swatch + 서비스명 + (MAU / 신규사용자) PC·MO 분해값
+ * 월별 MAU 호버 표 — `document.body` 포털 + position:fixed.
+ * - 표 너비는 내용 기준(가로 압축 없음)
+ * - 차트 밖으로 나가도 됨, 브라우저(visualViewport) 밖으로만 나가지 않게 위치 보정(우·좌·상·하 플립)
  */
 function HoverCard({
   hover,
-  containerEl,
   showPC,
   showMobile,
 }: {
   hover: HoverState;
-  containerEl: HTMLDivElement | null;
   showPC: boolean;
   showMobile: boolean;
 }) {
-  const rect = containerEl?.getBoundingClientRect();
-  const containerW = rect?.width ?? 800;
-  const estW = 540;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hoverRef = useRef(hover);
+  hoverRef.current = hover;
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
-  let left = hover.left + 16;
-  const top = Math.max(8, Math.min(hover.top - 10, (rect?.height ?? 600) - 40));
-  if (left + estW > containerW - 4) left = Math.max(8, hover.left - estW - 12);
+  const rowSig = `${hover.x}|${hover.primary.map((b) => b.name).join(',')}|${hover.secondary.map((b) => b.name).join(',')}`;
+
+  const commitTooltipPos = useCallback(() => {
+    const card = cardRef.current;
+    const h = hoverRef.current;
+    if (!card) return;
+    const { left, top } = clampTooltipToViewport(card, h.clientX, h.clientY);
+    setPos({ left, top });
+  }, []);
+
+  useLayoutEffect(() => {
+    commitTooltipPos();
+    const id = requestAnimationFrame(commitTooltipPos);
+    return () => cancelAnimationFrame(id);
+  }, [commitTooltipPos, hover.clientX, hover.clientY, rowSig, showPC, showMobile]);
+
+  useEffect(() => {
+    commitTooltipPos();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', commitTooltipPos);
+    vv?.addEventListener('scroll', commitTooltipPos);
+    window.addEventListener('resize', commitTooltipPos);
+    return () => {
+      vv?.removeEventListener('resize', commitTooltipPos);
+      vv?.removeEventListener('scroll', commitTooltipPos);
+      window.removeEventListener('resize', commitTooltipPos);
+    };
+  }, [commitTooltipPos]);
+
+  const mauSpan = (showPC ? 1 : 0) + (showMobile ? 1 : 0);
+  const newSpan = mauSpan;
+  const colCount = 1 + mauSpan + newSpan;
+  const leftPx = pos?.left ?? hover.clientX + 10;
+  const topPx = pos?.top ?? hover.clientY + 8;
 
   return (
     <div
-      className="trend-hover-card"
-      style={{ position: 'absolute', left, top, zIndex: 90, pointerEvents: 'none' }}
+      ref={cardRef}
+      className="trend-hover-card trend-hover-card--viewport"
+      style={{
+        position: 'fixed',
+        left: leftPx,
+        top: topPx,
+        opacity: pos == null ? 0 : 1,
+        zIndex: 10050,
+        pointerEvents: 'none',
+      }}
+      role="tooltip"
     >
-      <div className="trend-hover-title">{hover.x}</div>
-
-      {hover.primary.length > 0 && (
-        <div className="trend-hover-section trend-hover-section--primary">
-          {hover.primary.map((s) => (
-            <HoverBlock key={s.name} block={s} showPC={showPC} showMobile={showMobile} />
+      <table className="trend-hover-grid">
+        <thead>
+          <tr>
+            <th className="trend-hover-month" colSpan={colCount}>
+              {hover.x}
+            </th>
+          </tr>
+          <tr className="trend-hover-head-group">
+            <th className="trend-hover-corner" scope="col" />
+            <th className="trend-hover-group" colSpan={mauSpan} scope="colgroup">
+              MAU (명)
+            </th>
+            <th className="trend-hover-group" colSpan={newSpan} scope="colgroup">
+              신규사용자 (명)
+            </th>
+          </tr>
+          <tr className="trend-hover-head-sub">
+            <th className="trend-hover-corner" scope="col" />
+            {showPC ? (
+              <th className="trend-hover-sub" scope="col">
+                PC
+              </th>
+            ) : null}
+            {showMobile ? (
+              <th className="trend-hover-sub" scope="col">
+                MO
+              </th>
+            ) : null}
+            {showPC ? (
+              <th className="trend-hover-sub" scope="col">
+                PC
+              </th>
+            ) : null}
+            {showMobile ? (
+              <th className="trend-hover-sub" scope="col">
+                MO
+              </th>
+            ) : null}
+          </tr>
+        </thead>
+        <tbody>
+          {[...hover.primary, ...hover.secondary].map((block, idx) => (
+            <HoverTableRow
+              key={`${block.name}-${idx}`}
+              block={block}
+              showPC={showPC}
+              showMobile={showMobile}
+            />
           ))}
-        </div>
-      )}
-
-      {hover.primary.length > 0 && hover.secondary.length > 0 && (
-        <div className="trend-hover-divider" />
-      )}
-
-      {hover.secondary.length > 0 && (
-        <div className="trend-hover-section trend-hover-section--secondary">
-          {hover.secondary.map((s) => (
-            <HoverBlock key={s.name} block={s} showPC={showPC} showMobile={showMobile} />
-          ))}
-        </div>
-      )}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function HoverBlock({
+function quadValues(
+  block: HoverServiceData,
+  showPC: boolean,
+  showMobile: boolean,
+): { mPc: string; mMo: string; nPc: string; nMo: string } {
+  const dash = '-';
+  let mPc = dash;
+  let mMo = dash;
+  let nPc = dash;
+  let nMo = dash;
+  const both = showPC && showMobile;
+
+  if (block.showMauTooltip && block.aggregateMau != null) {
+    const v = fmtHoverCell(block.aggregateMau);
+    if (both) {
+      mPc = v;
+      mMo = dash;
+    } else if (showPC) mPc = v;
+    else if (showMobile) mMo = v;
+  } else if (block.hasMau && block.showMauTooltip) {
+    if (both) {
+      mPc = fmtHoverCell(block.pcMau);
+      mMo = fmtHoverCell(block.moMau);
+    } else if (showPC) mPc = fmtHoverCell(block.pcMau);
+    else if (showMobile) mMo = fmtHoverCell(block.moMau);
+  }
+
+  if (block.showNewTooltip) {
+    if (both) {
+      nPc = fmtHoverCell(block.pcNew);
+      nMo = fmtHoverCell(block.moNew);
+    } else if (showPC) nPc = fmtHoverCell(block.pcNew);
+    else if (showMobile) nMo = fmtHoverCell(block.moNew);
+  }
+
+  return { mPc, mMo, nPc, nMo };
+}
+
+function HoverTableRow({
   block,
   showPC,
   showMobile,
@@ -959,69 +1114,57 @@ function HoverBlock({
   showPC: boolean;
   showMobile: boolean;
 }) {
-  const both = showPC && showMobile;
+  const { mPc, mMo, nPc, nMo } = quadValues(block, showPC, showMobile);
+  const mauSeriesColor = block.color;
+  const newSeriesColor = newColorForHoverRow(block);
   const teacher = block.teacherNew;
-  const showTeacherExtra =
-    block.newOnly && teacher != null && teacher > 0;
-
-  const mauLine = () => {
-    if (!block.hasMau) return null;
-    if (both) {
-      return (
-        <span>
-          PC {fmtIntKo(block.pcMau)}명, MO {fmtIntKo(block.moMau)}명
-        </span>
-      );
-    }
-    if (showPC) return <span>PC {fmtIntKo(block.pcMau)}명</span>;
-    return <span>MO {fmtIntKo(block.moMau)}명</span>;
-  };
-
-  const newLine = () => {
-    const label = block.newOnly ? '신규가입' : '신규사용자';
-    if (both) {
-      const extra =
-        showTeacherExtra ? (
-          <span>
-            {' '}
-            · 교강사 {fmtIntKo(teacher)}명
-          </span>
-        ) : null;
-      return (
-        <span>
-          PC {fmtIntKo(block.pcNew)}명, MO {fmtIntKo(block.moNew)}명
-          {extra}
-        </span>
-      );
-    }
-    if (showPC) return <span>PC {fmtIntKo(block.pcNew)}명</span>;
-    return <span>MO {fmtIntKo(block.moNew)}명</span>;
-  };
+  const showTeacherExtra = block.newOnly && teacher != null && teacher > 0;
 
   return (
-    <div className="trend-hover-block">
-      <div className="trend-hover-block-name">
-        <span className="trend-hover-swatch" style={{ background: block.color }} />
-        <span>{block.name}</span>
-      </div>
-      {block.showMauTooltip && block.aggregateMau != null && (
-        <div className="trend-hover-row">
-          <span className="trend-hover-label">MAU</span>
-          <span className="trend-hover-value">{fmtIntKo(block.aggregateMau)}명</span>
-        </div>
-      )}
-      {block.hasMau && block.showMauTooltip && block.aggregateMau == null && (
-        <div className="trend-hover-row">
-          <span className="trend-hover-label">MAU</span>
-          <span className="trend-hover-value">{mauLine()}</span>
-        </div>
-      )}
-      {block.showNewTooltip && (
-        <div className="trend-hover-row">
-          <span className="trend-hover-label">{block.newOnly ? '신규가입' : '신규사용자'}</span>
-          <span className="trend-hover-value">{newLine()}</span>
-        </div>
-      )}
-    </div>
+    <tr className="trend-hover-body-row">
+      <th className="trend-hover-name-cell" scope="row">
+        <span className="trend-hover-name-line">
+          <span className="trend-hover-swatch" style={{ background: block.color }} aria-hidden />
+          <span>{hoverRowLabel(block)}</span>
+        </span>
+        {showTeacherExtra ? (
+          <span className="trend-hover-teacher">
+            교강사 신규 {fmtHoverCell(teacher)}명
+          </span>
+        ) : null}
+      </th>
+      {showPC ? (
+        <td
+          className={`trend-hover-num${mPc === '-' ? ' trend-hover-num--dash' : ''}`}
+          style={mPc === '-' ? undefined : { color: mauSeriesColor }}
+        >
+          {mPc}
+        </td>
+      ) : null}
+      {showMobile ? (
+        <td
+          className={`trend-hover-num${mMo === '-' ? ' trend-hover-num--dash' : ''}`}
+          style={mMo === '-' ? undefined : { color: mauSeriesColor }}
+        >
+          {mMo}
+        </td>
+      ) : null}
+      {showPC ? (
+        <td
+          className={`trend-hover-num${nPc === '-' ? ' trend-hover-num--dash' : ''}`}
+          style={nPc === '-' ? undefined : { color: newSeriesColor }}
+        >
+          {nPc}
+        </td>
+      ) : null}
+      {showMobile ? (
+        <td
+          className={`trend-hover-num${nMo === '-' ? ' trend-hover-num--dash' : ''}`}
+          style={nMo === '-' ? undefined : { color: newSeriesColor }}
+        >
+          {nMo}
+        </td>
+      ) : null}
+    </tr>
   );
 }

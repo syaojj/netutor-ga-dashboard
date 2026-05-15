@@ -419,8 +419,7 @@ export function NeTutorEventCardsPanel(props: {
   return (
     <div className="event-cards-panel" aria-label="서비스 이벤트 전후 3개월 평균 비교 NE Tutor 지표">
       <p className="event-cards-panel-lede">
-        이벤트 기준월 값을 기준으로, 이후 3개월(M+1~M+3) 평균과 비교한 증감률입니다. M+3 단일 월 비교가 아니며, PC·MOBILE ×
-        MAU·신규사용자 4개 지표를 확인합니다.
+        이벤트 기준월 값을 기준으로 M+1~M+3 평균과 비교한 값이며, M+3 단일 월 비교는 아닙니다.
       </p>
       <div className="event-cards-filter-row" role="toolbar" aria-label="이벤트 유형 필터">
         <span className="event-cards-filter-label">필터</span>

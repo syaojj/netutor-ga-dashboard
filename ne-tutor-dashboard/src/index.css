@@ -987,12 +987,6 @@ table.data th {
   padding-left: 0;
 }
 
-.yoy-event-cards-aside .event-cards-panel {
-  max-height: min(720px, 78vh);
-  overflow: auto;
-  padding-right: 4px;
-}
-
 .yoy-service-picker {
   display: flex;
   flex-wrap: wrap;
@@ -2473,3 +2467,98 @@ table.data.impact-summary-table .impact-pct-cell {
   }
 }
 
+/* —— 초기 로딩 오버레이·차트 플레이스홀더 —— */
+.app-boot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(4px);
+  animation: app-boot-overlay-in 0.35s ease-out;
+}
+
+@keyframes app-boot-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 패널·문구·스피너 색은 App.tsx 인라인으로 고정(테마/CSS 변수 이슈로 글자 미표시 방지) */
+.app-boot-overlay__panel {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+}
+
+.app-boot-spinner {
+  box-sizing: border-box;
+}
+
+@keyframes app-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app-boot-overlay__title {
+  box-sizing: border-box;
+}
+
+.app-chart-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.app-chart-placeholder__spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: #60a5fa;
+  animation: app-boot-spin 0.9s linear infinite;
+}
+
+.filters-bar-loading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.filters-bar-loading__dots span {
+  display: inline-block;
+  animation: filters-dot-pulse 1.2s ease-in-out infinite;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.filters-bar-loading__dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.filters-bar-loading__dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes filters-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}

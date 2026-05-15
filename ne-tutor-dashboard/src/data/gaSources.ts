@@ -16,6 +16,13 @@ export const GA_HTML_SOURCES = [
   '클래스카드 PC.html',
 ] as const;
 
+/**
+ * 일별 xlsx(워크북)에 행이 있을 때, GA HTML 14개를 추가로 받아 병합할지 여부.
+ * 기본(false): 병합 생략 → 초기 네트워크·메인 스레드 HTML 파싱 부하가 크게 줄어듭니다.
+ * HTML까지 워크북과 합쳐야 하면 빌드/로컬에서 `VITE_MERGE_GA_HTML=1` 을 설정하세요.
+ */
+export const MERGE_GA_HTML_WITH_WORKBOOK = import.meta.env.VITE_MERGE_GA_HTML === '1';
+
 /** IT 검증용 GA 일별 통합 통계(시트=서비스+디바이스). 있으면 HTML보다 우선 병합 */
 export const GA_DAILY_WORKBOOK_XLSX_NAME = 'NE Tutor_데이터 현황_260513.xlsx';
 

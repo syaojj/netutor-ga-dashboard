@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   DailyMetricRow,
   DeviceFilter,
@@ -11,6 +12,7 @@ import {
   GA_DAILY_WORKBOOK_XLSX_NAME,
   GA_HTML_SOURCES,
   GA_MONTHLY_WORKBOOK_XLSX_NAME,
+  MERGE_GA_HTML_WITH_WORKBOOK,
   ORDERS_XLSX_NAME,
   RAW_MENU_ITEMS,
 } from './data/gaSources';
@@ -92,6 +94,9 @@ export default function App() {
   const [yoyRangeEnd, setYoyRangeEnd] = useState('2026-04-30');
   const [yoyLogScale, setYoyLogScale] = useState(true);
   const boundsSynced = useRef(false);
+  const yoySectionRef = useRef<HTMLElement | null>(null);
+  /** 초기 부하 분산: 전년동월 Plotly는 섹션이 뷰포트에 가까워질 때 마운트 */
+  const [mountYoyChart, setMountYoyChart] = useState(false);
 
   const setDevice = useCallback((d: DeviceFilter) => {
     if (d === 'all') {
@@ -109,37 +114,34 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     setInitialLoadDone(false);
+    setMountYoyChart(false);
+
+    const fetchAllHtml = () =>
+      Promise.all(
+        GA_HTML_SOURCES.map(async (name) => {
+          const url = `${base}data/${encodeURIComponent(name)}`;
+          try {
+            const html = await fetchText(url);
+            return { name, html };
+          } catch {
+            return null;
+          }
+        }),
+      );
+
     (async () => {
       try {
         const dailyUrl = `${base}data/${encodeURIComponent(GA_DAILY_WORKBOOK_XLSX_NAME)}`;
         const monthlyUrl = `${base}data/${encodeURIComponent(GA_MONTHLY_WORKBOOK_XLSX_NAME)}`;
 
-        const [parsers, htmlParts, gaBuf, monthlyBuf] = await Promise.all([
-          Promise.all([
-            import('./utils/parseHtmlSheets'),
+        /** 1단계: HTML 없이 xlsx + (일별·월간) 파서만 — 대부분 화면이 먼저 뜸 */
+        const [{ parseGaWorkbook, mergeDailyPreferWorkbook }, { parseGaMonthlyWorkbook }, gaBuf, monthlyBuf] =
+          await Promise.all([
             import('./utils/parseGaWorkbook'),
             import('./utils/parseGaMonthlyWorkbook'),
-          ]),
-          Promise.all(
-            GA_HTML_SOURCES.map(async (name) => {
-              const url = `${base}data/${encodeURIComponent(name)}`;
-              try {
-                const html = await fetchText(url);
-                return { name, html };
-              } catch {
-                return null;
-              }
-            }),
-          ),
-          fetchBuf(dailyUrl).catch(() => null),
-          fetchBuf(monthlyUrl).catch(() => null),
-        ]);
-
-        const [{ parseHtmlSheets }, { parseGaWorkbook, mergeDailyPreferWorkbook }, { parseGaMonthlyWorkbook }] =
-          parsers;
-
-        const valid = htmlParts.filter(Boolean) as { name: string; html: string }[];
-        const parsedHtml = parseHtmlSheets(valid);
+            fetchBuf(dailyUrl).catch(() => null),
+            fetchBuf(monthlyUrl).catch(() => null),
+          ]);
 
         let fromWorkbook: DailyMetricRow[] = [];
         let parsedEbookMonthly: EbookMonthlyRow[] = [];
@@ -149,7 +151,7 @@ export default function App() {
             fromWorkbook = pw.daily;
             parsedEbookMonthly = pw.ebookMonthly;
           } catch {
-            /* 일별 xlsx 파싱 실패 시 HTML만 사용 */
+            /* 일별 xlsx 파싱 실패 시 이후 HTML 경로에서 보완 */
           }
         }
 
@@ -164,25 +166,54 @@ export default function App() {
           }
         }
 
-        const mergedDaily =
-          fromWorkbook.length > 0
-            ? mergeDailyPreferWorkbook(fromWorkbook, parsedHtml.daily)
-            : parsedHtml.daily;
+        const applyDailyAndFinish = (mergedDaily: DailyMetricRow[]) => {
+          if (cancelled) return;
+          if (!mergedDaily.length) {
+            setDailyRaw(buildSampleDaily());
+            setUsedSample(true);
+          } else {
+            setDailyRaw(mergedDaily);
+            setUsedSample(false);
+          }
+          setMonthlyByDevice(parsedMonthlyByDevice);
+          setOrders([]);
+          setEbookMonthly(parsedEbookMonthly);
+          setLoadError(null);
+          setInitialLoadDone(true);
+        };
 
-        if (cancelled) return;
+        if (fromWorkbook.length > 0) {
+          applyDailyAndFinish(mergeDailyPreferWorkbook(fromWorkbook, []));
 
-        if (!mergedDaily.length) {
-          setDailyRaw(buildSampleDaily());
-          setUsedSample(true);
+          if (MERGE_GA_HTML_WITH_WORKBOOK) {
+            void (async () => {
+              try {
+                const htmlParts = await fetchAllHtml();
+                if (cancelled) return;
+                const { parseHtmlSheets } = await import('./utils/parseHtmlSheets');
+                const valid = htmlParts.filter(Boolean) as { name: string; html: string }[];
+                const parsedHtml = parseHtmlSheets(valid);
+                const merged = mergeDailyPreferWorkbook(fromWorkbook, parsedHtml.daily);
+                if (!cancelled) {
+                  if (merged.length) {
+                    setDailyRaw(merged);
+                    setUsedSample(false);
+                  }
+                }
+              } catch {
+                /* 병합 실패 시 1단계 워크북 데이터 유지 */
+              }
+            })();
+          }
         } else {
-          setDailyRaw(mergedDaily);
-          setUsedSample(false);
+          /** 워크북 일별이 없으면 HTML 전부 받은 뒤에만 일별 확정 */
+          const htmlParts = await fetchAllHtml();
+          if (cancelled) return;
+          const { parseHtmlSheets } = await import('./utils/parseHtmlSheets');
+          const valid = htmlParts.filter(Boolean) as { name: string; html: string }[];
+          const parsedHtml = parseHtmlSheets(valid);
+          applyDailyAndFinish(parsedHtml.daily);
         }
-        setMonthlyByDevice(parsedMonthlyByDevice);
-        setOrders([]);
-        setEbookMonthly(parsedEbookMonthly);
-        setLoadError(null);
-        setInitialLoadDone(true);
 
         const ordersUrl = `${base}data/${encodeURIComponent(ORDERS_XLSX_NAME)}`;
         void (async () => {
@@ -212,6 +243,28 @@ export default function App() {
       cancelled = true;
     };
   }, [base]);
+
+  /** 전년동월 차트: 첫 화면에서 Plotly 이중 초기화 방지 — 스크롤 근접 또는 수 초 후 마운트 */
+  useEffect(() => {
+    if (!initialLoadDone || mountYoyChart) return;
+    const el = yoySectionRef.current;
+    if (!el) {
+      setMountYoyChart(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setMountYoyChart(true);
+      },
+      { root: null, rootMargin: '200px 0px', threshold: 0.01 },
+    );
+    io.observe(el);
+    const t = window.setTimeout(() => setMountYoyChart(true), 2800);
+    return () => {
+      io.disconnect();
+      window.clearTimeout(t);
+    };
+  }, [initialLoadDone, mountYoyChart]);
 
   const bounds = useMemo(() => {
     const monthlyB = monthlyByDeviceBounds(monthlyByDevice);
@@ -440,6 +493,62 @@ export default function App() {
         />
       }
     >
+      {!initialLoadDone &&
+        createPortal(
+          <div className="app-boot-overlay" role="status" aria-live="polite" aria-busy="true">
+            <div
+              className="app-boot-overlay__panel"
+              style={{
+                textAlign: 'center',
+                padding: '28px 36px',
+                borderRadius: 14,
+                border: '1px solid rgba(148, 163, 184, 0.4)',
+                backgroundColor: '#1e293b',
+                boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+                maxWidth: 'min(360px, 100%)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 10,
+                flexShrink: 0,
+                color: '#f1f5f9',
+                fontFamily: '"Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
+              }}
+            >
+              <div
+                className="app-boot-spinner"
+                style={{
+                  width: 44,
+                  height: 44,
+                  margin: '0 auto 4px',
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  border: '3px solid rgba(148, 163, 184, 0.35)',
+                  borderTopColor: '#60a5fa',
+                  animation: 'app-boot-spin 0.85s linear infinite',
+                }}
+                aria-hidden
+              />
+              <p
+                className="app-boot-overlay__title"
+                style={{
+                  margin: 0,
+                  padding: 0,
+                  flexShrink: 0,
+                  maxWidth: '100%',
+                  fontSize: '1.08rem',
+                  fontWeight: 700,
+                  lineHeight: 1.45,
+                  color: '#f8fafc',
+                  wordBreak: 'keep-all',
+                }}
+              >
+                데이터를 불러오고 있습니다
+              </p>
+            </div>
+          </div>,
+          document.body,
+        )}
       {mainView === 'raw' && (
         <Suspense
           fallback={
@@ -495,6 +604,7 @@ export default function App() {
           />
           <div className="trend-subsection trend-group-node">
             <div className="trend-group-main trend-subsection-panel">
+              {initialLoadDone ? (
               <Suspense
                 fallback={
                   <div className="chart-lazy-fallback chart-lazy-fallback--trend-block" role="status">
@@ -517,12 +627,21 @@ export default function App() {
                   />
                 </div>
               </Suspense>
+              ) : (
+                <div
+                  className="chart-lazy-fallback chart-lazy-fallback--trend-block app-chart-placeholder"
+                  role="status"
+                >
+                  <span className="app-chart-placeholder__spinner" aria-hidden />
+                  <span>차트는 데이터 준비 후 불러옵니다</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      <section id="yoy-compare" className="section section--yoy-analysis">
+      <section ref={yoySectionRef} id="yoy-compare" className="section section--yoy-analysis">
         <h2 className="section-title">전년 동월 비교</h2>
         <div className="trend-subsection">
           <MonthlyTrendControls
@@ -553,9 +672,9 @@ export default function App() {
             <div className="trend-group-main trend-subsection-panel">
               <TrendSubsectionTitle>선택 기간 VS 전년동월 추이</TrendSubsectionTitle>
               <p className="yoy-chart-section-lede">
-                실선 선택월 · 점선 전년동월 · MAU·신규사용자 동일 세로축(명) / 같은 월 축에 선택월과 전년동월을 겹쳐 봅니다. (예:
-                2024-03 vs 2023-03)
+                실선은 선택 기간, 점선은 전년 동일 기간입니다. 같은 월 기준으로 겹쳐 비교합니다. (예: 2024-03 VS 2023-03)
               </p>
+              {mountYoyChart ? (
               <Suspense
                 fallback={
                   <div className="chart-lazy-fallback chart-lazy-fallback--trend-block" role="status">
@@ -571,6 +690,15 @@ export default function App() {
                   logScale={yoyLogScale}
                 />
               </Suspense>
+              ) : (
+                <div
+                  className="chart-lazy-fallback chart-lazy-fallback--trend-block app-chart-placeholder"
+                  role="status"
+                >
+                  <span className="app-chart-placeholder__spinner" aria-hidden />
+                  <span>아래로 스크롤하면 전년 동월 차트를 불러옵니다</span>
+                </div>
+              )}
             </div>
           </div>
 

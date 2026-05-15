@@ -46,8 +46,13 @@ export function FiltersBar(props: {
         </button>
       )}
       {props.isInitialLoad && (
-        <span style={{ ...label, color: 'var(--text)' }} aria-live="polite">
-          데이터 로드 중…
+        <span className="filters-bar-loading" style={{ ...label, color: 'var(--text)' }} aria-live="polite">
+          <span className="filters-bar-loading__label">데이터를 불러오는 중</span>
+          <span className="filters-bar-loading__dots" aria-hidden>
+            <span>.</span>
+            <span>.</span>
+            <span>.</span>
+          </span>
         </span>
       )}
       <span style={label} title="앱을 빌드한 시각입니다. 소스를 반영하려면 배포 전 `npm run build`를 다시 실행하세요.">

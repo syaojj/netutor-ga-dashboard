@@ -16,8 +16,6 @@ export const TREND_SERIES_NAMES = [
   'NELT 신규사용자',
   '문법문제 MAU',
   '문법문제 신규사용자',
-  '문법예문 MAU',
-  '문법예문 신규사용자',
   '어휘출제 MAU',
   '어휘출제 신규사용자',
   '클래스카드 MAU',
@@ -45,18 +43,17 @@ export const TREND_PRIMARY_NAMES: readonly TrendSeriesName[] = [
 
 /**
  * 하단(서비스) 그룹: 표시 라벨 ↔ 월간 xlsx 시트의 서비스명 매핑.
- * 월간 xlsx는 이미 짧은 이름(NELT/문법문제/문법예문/어휘출제/클래스카드)을 사용한다.
+ * 좌측 매트릭스·Plot 순서는 LAW 행(TREND_LAW_MAU_SERIES) 다음에 이 배열 순서를 씁니다.
  */
 export const TREND_SERVICE_ROW: readonly { display: string; dataService: string }[] = [
-  { display: 'NELT', dataService: 'NELT' },
-  { display: '문법문제', dataService: '문법문제' },
-  { display: '문법예문', dataService: '문법예문' },
   { display: '어휘출제', dataService: '어휘출제' },
   { display: '클래스카드', dataService: '클래스카드' },
+  { display: '문법문제', dataService: '문법문제' },
+  { display: 'NELT', dataService: 'NELT' },
 ] as const;
 
 /** MAU 범례 행에 함께 두는 LAW 시리즈(차트 선 색은 서비스 MAU와 겹치지 않게) */
-export const TREND_LAW_MAU_SERIES: readonly TrendSeriesName[] = ['E-Book MAU', '부가자료(개별) MAU'];
+export const TREND_LAW_MAU_SERIES: readonly TrendSeriesName[] = ['부가자료(개별) MAU', 'E-Book MAU'];
 
 export const SERIES_STYLE: Record<TrendSeriesName, { color: string; dash: 'solid' | 'dot' }> = {
   'NE Tutor MAU': { color: '#60a5fa', dash: 'solid' },
@@ -66,8 +63,6 @@ export const SERIES_STYLE: Record<TrendSeriesName, { color: string; dash: 'solid
   'NELT 신규사용자': { color: '#fcd34d', dash: 'dot' },
   '문법문제 MAU': { color: '#f472b6', dash: 'solid' },
   '문법문제 신규사용자': { color: '#f9a8d4', dash: 'dot' },
-  '문법예문 MAU': { color: '#2dd4bf', dash: 'solid' },
-  '문법예문 신규사용자': { color: '#5eead4', dash: 'dot' },
   '어휘출제 MAU': { color: '#34d399', dash: 'solid' },
   '어휘출제 신규사용자': { color: '#6ee7b7', dash: 'dot' },
   '클래스카드 MAU': { color: '#a78bfa', dash: 'solid' },

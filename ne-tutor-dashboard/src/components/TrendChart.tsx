@@ -598,7 +598,7 @@ export function TrendChart(props: {
     /**
      * 커스텀 HTML 툴팁: 호버한 월(x) 기준으로 PC/MO 분해값을 직접 조회해서 표시.
      * - 상단: NE Tutor (MAU/신규사용자) + 통합회원 (신규가입만)
-     * - 하단(2-컬럼): NELT/문법문제/문법예문/어휘출제/클래스카드 (각 MAU/신규사용자)
+     * - 하단(2-컬럼): TREND_SERVICE_ROW 기준 서비스 (각 MAU/신규사용자)
      */
     const handleHover = (data: Readonly<{ points: { x: string }[]; event: MouseEvent }>) => {
       const point = data.points?.[0];
@@ -686,38 +686,43 @@ export function TrendChart(props: {
       const ebookByMonth = new Map(props.ebookMonthly.map((r) => [r.monthKey, r]));
       const lawRow = ebookByMonth.get(xv);
       const lawBlocks: HoverServiceData[] = [];
-      if (lawRow && isOn('E-Book MAU') && lawRow.lawEbookUniqueUsers != null) {
-        lawBlocks.push({
-          name: 'E-Book MAU',
-          color: SERIES_STYLE['E-Book MAU'].color,
-          pcMau: null,
-          moMau: null,
-          pcNew: null,
-          moNew: null,
-          hasMau: true,
-          newOnly: false,
-          showMauTooltip: true,
-          showNewTooltip: false,
-          aggregateMau: lawRow.lawEbookUniqueUsers,
-        });
-      }
-      if (lawRow && isOn('부가자료(개별) MAU') && lawRow.lawSupplementaryIndividualDownloads != null) {
-        lawBlocks.push({
-          name: '부가자료(개별) MAU',
-          color: SERIES_STYLE['부가자료(개별) MAU'].color,
-          pcMau: null,
-          moMau: null,
-          pcNew: null,
-          moNew: null,
-          hasMau: true,
-          newOnly: false,
-          showMauTooltip: true,
-          showNewTooltip: false,
-          aggregateMau: lawRow.lawSupplementaryIndividualDownloads,
-        });
+      if (lawRow) {
+        for (const lawName of TREND_LAW_MAU_SERIES) {
+          if (!isOn(lawName)) continue;
+          if (lawName === '부가자료(개별) MAU' && lawRow.lawSupplementaryIndividualDownloads != null) {
+            lawBlocks.push({
+              name: '부가자료(개별) MAU',
+              color: SERIES_STYLE['부가자료(개별) MAU'].color,
+              pcMau: null,
+              moMau: null,
+              pcNew: null,
+              moNew: null,
+              hasMau: true,
+              newOnly: false,
+              showMauTooltip: true,
+              showNewTooltip: false,
+              aggregateMau: lawRow.lawSupplementaryIndividualDownloads,
+            });
+          }
+          if (lawName === 'E-Book MAU' && lawRow.lawEbookUniqueUsers != null) {
+            lawBlocks.push({
+              name: 'E-Book MAU',
+              color: SERIES_STYLE['E-Book MAU'].color,
+              pcMau: null,
+              moMau: null,
+              pcNew: null,
+              moNew: null,
+              hasMau: true,
+              newOnly: false,
+              showMauTooltip: true,
+              showNewTooltip: false,
+              aggregateMau: lawRow.lawEbookUniqueUsers,
+            });
+          }
+        }
       }
 
-      const secondary = [...secondaryBase, ...lawBlocks];
+      const secondary = [...lawBlocks, ...secondaryBase];
 
       if (primary.length === 0 && secondary.length === 0) return;
 
@@ -848,17 +853,6 @@ export function TrendChart(props: {
                 <span>MAU</span>
                 <span>신규사용자</span>
               </div>
-              {TREND_SERVICE_ROW.map((s) => {
-                const mauName = `${s.display} MAU` as TrendSeriesName;
-                const newName = `${s.display} 신규사용자` as TrendSeriesName;
-                return (
-                  <div key={s.dataService} className="mau-trend-matrix__row">
-                    <span className="mau-trend-matrix__svc">{s.display}</span>
-                    <div className="mau-trend-matrix__cell">{renderVisibilityPill(mauName, 'mau', 'MAU')}</div>
-                    <div className="mau-trend-matrix__cell">{renderVisibilityPill(newName, 'new', '신규')}</div>
-                  </div>
-                );
-              })}
               {TREND_LAW_MAU_SERIES.map((lawName) => {
                 const shortLabel = lawName === 'E-Book MAU' ? 'E-Book' : '부가자료';
                 return (
@@ -868,6 +862,17 @@ export function TrendChart(props: {
                     <span className="mau-trend-matrix__dash" aria-hidden>
                       —
                     </span>
+                  </div>
+                );
+              })}
+              {TREND_SERVICE_ROW.map((s) => {
+                const mauName = `${s.display} MAU` as TrendSeriesName;
+                const newName = `${s.display} 신규사용자` as TrendSeriesName;
+                return (
+                  <div key={s.dataService} className="mau-trend-matrix__row">
+                    <span className="mau-trend-matrix__svc">{s.display}</span>
+                    <div className="mau-trend-matrix__cell">{renderVisibilityPill(mauName, 'mau', 'MAU')}</div>
+                    <div className="mau-trend-matrix__cell">{renderVisibilityPill(newName, 'new', '신규')}</div>
                   </div>
                 );
               })}

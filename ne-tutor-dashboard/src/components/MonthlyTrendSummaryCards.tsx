@@ -4,10 +4,10 @@ import { listMonthsBetweenInclusive } from '../utils/monthRange';
 import { SERIES_STYLE, type TrendSeriesName } from './trendSeriesConfig';
 
 const SHARE_SERVICES: { key: string; label: string }[] = [
-  { key: 'NELT', label: 'NELT' },
-  { key: '문법문제', label: '문법문제뱅크' },
   { key: '어휘출제', label: '어휘출제마법사' },
   { key: '클래스카드', label: '클래스카드' },
+  { key: '문법문제', label: '문법문제뱅크' },
+  { key: 'NELT', label: 'NELT' },
 ];
 
 function svcSeriesColors(key: string): { mau: string; neu: string } {
@@ -325,6 +325,66 @@ export function MonthlyTrendSummaryCards(props: {
             </div>
           </div>
         </div>
+        <div className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single">
+          <div className="monthly-trend-card-title-row">
+            <span className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">부가자료(개별다운)</span>
+            <button
+              type="button"
+              className="monthly-trend-summary-info"
+              aria-label={`${SHARE_PCT_LAYER_TITLE} 안내`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHelpOpen(false);
+                setSharePctHelpOpen((open) => !open);
+              }}
+            >
+              <SharePctInfoIcon />
+            </button>
+          </div>
+          <div className="monthly-trend-card-metrics-row">
+            <div className="monthly-trend-card-metric-half">
+              <div className="monthly-trend-card-kicker">MAU</div>
+              <div className="monthly-trend-card-value-stack">
+                <span className="monthly-trend-card-value-num" style={{ color: SUP_MAU_COLOR }}>
+                  {stats.avgSupInd != null ? fmtInt(stats.avgSupInd) : '—'}
+                </span>
+                <span className="monthly-trend-card-value-pct" style={{ color: SUP_MAU_COLOR }}>
+                  {fmtPct(stats.supMauPct)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single">
+          <div className="monthly-trend-card-title-row">
+            <span className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">E-Book</span>
+            <button
+              type="button"
+              className="monthly-trend-summary-info"
+              aria-label={`${SHARE_PCT_LAYER_TITLE} 안내`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHelpOpen(false);
+                setSharePctHelpOpen((open) => !open);
+              }}
+            >
+              <SharePctInfoIcon />
+            </button>
+          </div>
+          <div className="monthly-trend-card-metrics-row">
+            <div className="monthly-trend-card-metric-half">
+              <div className="monthly-trend-card-kicker">MAU</div>
+              <div className="monthly-trend-card-value-stack">
+                <span className="monthly-trend-card-value-num" style={{ color: EBOOK_MAU_COLOR }}>
+                  {stats.avgEbookUsers != null ? fmtInt(stats.avgEbookUsers) : '—'}
+                </span>
+                <span className="monthly-trend-card-value-pct" style={{ color: EBOOK_MAU_COLOR }}>
+                  {fmtPct(stats.ebookMauPct)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
         {stats.shares.map((s) => {
           const colors = svcSeriesColors(s.key);
           return (
@@ -372,66 +432,6 @@ export function MonthlyTrendSummaryCards(props: {
             </div>
           );
         })}
-        <div className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single">
-          <div className="monthly-trend-card-title-row">
-            <span className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">E-Book</span>
-            <button
-              type="button"
-              className="monthly-trend-summary-info"
-              aria-label={`${SHARE_PCT_LAYER_TITLE} 안내`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setHelpOpen(false);
-                setSharePctHelpOpen((open) => !open);
-              }}
-            >
-              <SharePctInfoIcon />
-            </button>
-          </div>
-          <div className="monthly-trend-card-metrics-row">
-            <div className="monthly-trend-card-metric-half">
-              <div className="monthly-trend-card-kicker">MAU</div>
-              <div className="monthly-trend-card-value-stack">
-                <span className="monthly-trend-card-value-num" style={{ color: EBOOK_MAU_COLOR }}>
-                  {stats.avgEbookUsers != null ? fmtInt(stats.avgEbookUsers) : '—'}
-                </span>
-                <span className="monthly-trend-card-value-pct" style={{ color: EBOOK_MAU_COLOR }}>
-                  {fmtPct(stats.ebookMauPct)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="monthly-trend-card monthly-trend-card--compare monthly-trend-card--metric-single">
-          <div className="monthly-trend-card-title-row">
-            <span className="monthly-trend-card-title-main monthly-trend-card-title-main--svc">부가자료(개별다운)</span>
-            <button
-              type="button"
-              className="monthly-trend-summary-info"
-              aria-label={`${SHARE_PCT_LAYER_TITLE} 안내`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setHelpOpen(false);
-                setSharePctHelpOpen((open) => !open);
-              }}
-            >
-              <SharePctInfoIcon />
-            </button>
-          </div>
-          <div className="monthly-trend-card-metrics-row">
-            <div className="monthly-trend-card-metric-half">
-              <div className="monthly-trend-card-kicker">MAU</div>
-              <div className="monthly-trend-card-value-stack">
-                <span className="monthly-trend-card-value-num" style={{ color: SUP_MAU_COLOR }}>
-                  {stats.avgSupInd != null ? fmtInt(stats.avgSupInd) : '—'}
-                </span>
-                <span className="monthly-trend-card-value-pct" style={{ color: SUP_MAU_COLOR }}>
-                  {fmtPct(stats.supMauPct)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

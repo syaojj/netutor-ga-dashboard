@@ -21,12 +21,13 @@ export default defineConfig({
     __BUILD_STAMP__: JSON.stringify(buildStampIso),
   },
   server: {
-    host: true,
+    /** LAN·다른 기기에서 http://<PC IP>:5173 접속 (Windows 방화벽에서 Node 허용 필요할 수 있음) */
+    host: '0.0.0.0',
     port: 5173,
     strictPort: false,
   },
   preview: {
-    host: true,
+    host: '0.0.0.0',
     port: 4173,
   },
   build: {

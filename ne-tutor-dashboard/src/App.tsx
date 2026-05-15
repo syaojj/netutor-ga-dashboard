@@ -565,6 +565,7 @@ export default function App() {
               >
                 <YoYCompareChartsGrid
                   monthlyByDevice={monthlyByDevice}
+                  ebookMonthly={ebookMonthly}
                   rangeStart={yoyRs}
                   rangeEnd={yoyRe}
                   logScale={yoyLogScale}

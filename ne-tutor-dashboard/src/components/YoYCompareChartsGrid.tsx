@@ -5,10 +5,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
-import type { MonthlyByDeviceRow } from '../types';
+import type { EbookMonthlyRow, MonthlyByDeviceRow } from '../types';
 import { APP_FONT_FAMILY } from '../fonts';
 import { useTheme } from '../context/ThemeContext';
-import { TREND_SERVICE_ROW } from './trendSeriesConfig';
+
+/** 전년 동월 서비스 탭 순서(데이터가 있는 항목만 표시). LAW E-Book·부가자료는 ebookMonthly에서 합성 행으로 채움 */
+const YOY_SERVICE_ORDER: readonly string[] = [
+  'NE Tutor',
+  '통합회원',
+  '부가자료',
+  'E-Book',
+  '어휘출제',
+  '클래스카드',
+  '문법문제',
+  'NELT',
+];
 
 /**
  * 전년 동월 비교: 지표별 동일 색조 — 당월 실선(진함)·전년 동월 점선(연함).
@@ -111,11 +122,19 @@ function buildLinearYAxisTicks(ymin: number, ymax: number): Partial<Layout['yaxi
   };
 }
 
-const TOGGLE_SERVICES: readonly string[] = [
-  'NE Tutor',
-  '통합회원',
-  ...TREND_SERVICE_ROW.map((s) => s.dataService),
-];
+function servicesWithDataInRange(
+  byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
+  months: string[],
+): string[] {
+  if (months.length === 0) return [...YOY_SERVICE_ORDER];
+  const seen = new Set<string>();
+  for (const mo of months) {
+    const rowMap = byMonth.get(mo);
+    if (!rowMap) continue;
+    for (const svc of rowMap.keys()) seen.add(svc);
+  }
+  return YOY_SERVICE_ORDER.filter((svc) => seen.has(svc));
+}
 
 type DeviceSide = 'pc' | 'mo';
 
@@ -133,20 +152,6 @@ function readMauNew(
   const mau = device === 'pc' ? row.pcMau : row.moMau;
   const neu: number | null = device === 'pc' ? row.pcNew : row.moNew;
   return { mau, neu };
-}
-
-function rowHasServiceEntry(row: MonthlyByDeviceRow | undefined): boolean {
-  return row != null;
-}
-
-function servicesWithDataInRange(
-  byMonth: Map<string, Map<string, MonthlyByDeviceRow>>,
-  months: string[],
-): string[] {
-  if (months.length === 0) return [...TOGGLE_SERVICES];
-  return TOGGLE_SERVICES.filter((svc) =>
-    months.some((m) => rowHasServiceEntry(byMonth.get(m)?.get(svc))),
-  );
 }
 
 type YoyHoverTip = { device: DeviceSide; idx: number; left: number; top: number };
@@ -187,7 +192,7 @@ function YoyHoverCard({
   }
 
   const deviceLabel = tip.device === 'pc' ? 'PC' : 'Mobile';
-  const svcTitle = svc === '통합회원' ? `${svc} (신규사용자)` : svc;
+  const svcTitle = svc;
   const items: { title: string; monthRef: string; val: number | null; color: string }[] = [
     { title: 'MAU 선택월', monthRef: m, val: mauC, color: YOY_METRIC_COLORS.mauCurrent },
     { title: 'MAU 전년동월', monthRef: pm, val: mauP, color: YOY_METRIC_COLORS.mauPrior },
@@ -240,6 +245,7 @@ interface YoYPanelPayload {
 
 export function YoYCompareChartsGrid(props: {
   monthlyByDevice: readonly MonthlyByDeviceRow[];
+  ebookMonthly: readonly EbookMonthlyRow[];
   rangeStart: string;
   rangeEnd: string;
   logScale: boolean;
@@ -264,8 +270,37 @@ export function YoYCompareChartsGrid(props: {
       if (!map.has(r.month)) map.set(r.month, new Map());
       map.get(r.month)!.set(r.service, r);
     }
+    for (const eb of props.ebookMonthly) {
+      const mo = eb.monthKey;
+      if (!map.has(mo)) map.set(mo, new Map());
+      const m = map.get(mo)!;
+      const u = eb.lawEbookUniqueUsers;
+      if (u != null && Number.isFinite(u)) {
+        m.set('E-Book', {
+          service: 'E-Book',
+          month: mo,
+          pcMau: u,
+          moMau: u,
+          pcNew: null,
+          moNew: null,
+          teacherNew: null,
+        });
+      }
+      const s = eb.lawSupplementaryIndividualDownloads;
+      if (s != null && Number.isFinite(s)) {
+        m.set('부가자료', {
+          service: '부가자료',
+          month: mo,
+          pcMau: s,
+          moMau: s,
+          pcNew: null,
+          moNew: null,
+          teacherNew: null,
+        });
+      }
+    }
     return map;
-  }, [props.monthlyByDevice]);
+  }, [props.monthlyByDevice, props.ebookMonthly]);
 
   const activeServices = useMemo(() => servicesWithDataInRange(byMonth, months), [byMonth, months]);
 
@@ -473,7 +508,6 @@ export function YoYCompareChartsGrid(props: {
       const yaxis: Partial<Layout['yaxis']> = {
         autorange: true,
         type: props.logScale ? 'log' : 'linear',
-        title: { text: 'MAU·신규사용자 (명)', font: { size: 11, color: chartTheme.font } },
         gridcolor: chartTheme.grid,
         rangemode: props.logScale ? undefined : 'tozero',
         separatethousands: true,
@@ -556,8 +590,6 @@ export function YoYCompareChartsGrid(props: {
     };
   }, [panelPayloads, months, props.logScale, chartTheme]);
 
-  const displayLabel = (svc: string) => (svc === '통합회원' ? `${svc} (신규사용자)` : svc);
-
   return (
     <div ref={shellRef} className="trend-chart-shell trend-chart-shell--flat">
       {activeServices.length === 0 && (
@@ -612,7 +644,7 @@ export function YoYCompareChartsGrid(props: {
                   onClick={() => setSelectedService(svc)}
                 >
                   <span className={`yoy-service-dot${on ? ' yoy-service-dot--active' : ''}`} aria-hidden />
-                  <span>{displayLabel(svc)}</span>
+                  <span>{svc}</span>
                 </button>
               );
             })}
